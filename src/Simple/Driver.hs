@@ -78,7 +78,6 @@ bind pal env (C.App f args) = S.App (bind pal env (C.App f (init args))) (bind p
 bind pal env (C.Pair a b) = S.Pair (bind pal env a) (bind pal env b)
 bind pal env (C.Fst p) = S.Fst (bind pal env p)
 bind pal env (C.Snd p) = S.Snd (bind pal env p)
-
 bind pal env (C.UndIn a) = S.UndIn (bind pal env a)
 bind pal env (C.UndOut a) = S.UndOut (bind pal env a)
 
@@ -106,8 +105,20 @@ bind pal env (C.TensorElim psi omega theta z mot (x, xc) (y, yc) c)
         (before, _:after) = splitAt zIdx (fmap fst omega)
         omega' = before ++ [x, y] ++ after
 
+bind pal env (C.TensorElimSimple s mot (x, xc) (y, yc) c)
+  = S.TensorElim 
+    (Palette [])
+    [TopColour]
+    (S.TeleSubst (PaletteSubst []) [bind pal env s])
+    0
+    (bindTy env mot)
+    (bind (C.Palette $ (C.palLoneTensor (xc, yc)):cpals) (bindsExtTele env [x, y]) c)
+  where (C.Palette cpals) = pal
+
   -- HomLam :: Ident -> Term -> Term
   -- HomApp :: Term -> Term -> Term
+
+
 
 data Env = Env { envBindings :: Bindings, envCheckEnv :: S.Env }
 

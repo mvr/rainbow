@@ -24,7 +24,7 @@ symbol :: String -> Parser String
 symbol = L.symbol sc
 
 reserved :: [String]
-reserved = ["let", "fun", "fst", "snd", "type", "for", "with", "tensormatch"]
+reserved = ["let", "fun", "fst", "snd", "type", "at", "with", "tensormatch"]
 
 ident :: Parser Ident
 ident = (lexeme . try) (p >>= check)
@@ -37,6 +37,12 @@ ident = (lexeme . try) (p >>= check)
 -- ident :: Parser Ident
 -- ident = lexeme ((:) <$> letterChar <*> many alphaNumChar <?> "identifier")
 
+prodSym :: Parser ()
+prodSym = pure () <* (try (symbol "*") <|> symbol "×")
+
+tensorSym :: Parser ()
+tensorSym = pure () <* (try (symbol "*o") <|> symbol "⊗")
+
 slice :: Parser Slice
 slice = Slice <$> many ident
 
@@ -44,12 +50,12 @@ palettePiece :: Parser PalettePiece
 palettePiece = do
   symbol "("
   r <- (Just <$> ident) <|> (pure Nothing <* char '_')
-  symbol "="
-  rp <- palette
-  symbol "⊗"
+  rp <- try (symbol "=" *> palette) 
+        <|> pure (emptyPal)
+  tensorSym
   b <- (Just <$> ident) <|> (pure Nothing <* char '_')
-  symbol "="
-  bp <- palette
+  bp <- try (symbol "=" *> palette) 
+        <|> pure (emptyPal)
   symbol ")"
   return $ TensorPal r rp b bp
 
@@ -61,14 +67,14 @@ palSubstPiece = do
   slr <- slice
   symbol "/"
   r <- ident
-  symbol "="
-  rtheta <- palSubst
-  symbol "⊗"
+  rtheta <- try (symbol "=" *> palSubst)
+            <|> pure (PaletteSubst [])
+  tensorSym
   slb <- slice
   symbol "/"
   b <- ident
-  symbol "="
-  btheta <- palSubst
+  btheta <- try (symbol "=" *> palSubst)
+            <|> pure (PaletteSubst [])
   symbol ")"
   return $ TensorPalSub slr r rtheta slb b btheta
 
@@ -92,8 +98,8 @@ atomicTy = BaseTy <$> ident
 
 ty :: Parser Ty
 ty = try (Pi <$> atomicTy <* symbol "->" <*> atomicTy)
-  <|> try (Sg <$> atomicTy <* symbol "*" <*> atomicTy)
-  <|> try (Tensor <$> atomicTy <* symbol "⊗" <*> atomicTy)
+  <|> try (Sg <$> atomicTy <* prodSym <*> atomicTy)
+  <|> try (Tensor <$> atomicTy <* tensorSym <*> atomicTy)
   <|> try (Und <$> (symbol "♮" *> ty))
   <|> BaseTy <$> ident
 
@@ -139,10 +145,30 @@ term =
     t <- term
     return (Lam x t)
   )
+  <|> try (
+    do 
+      symbol "tensormatch"
+      s <- term
+      symbol "at"
+      mot <- ty
+      symbol "with"
 
--- tensormatch /p ⊗ /g | a/p, b/z, c/q for (p ⊗ g) | r#p, g#z, j#q -> C with 
---   z = n#x ⊗ m#y -> c
+      xc <- ident
+      symbol "#"
+      x <- ident
 
+      tensorSym
+
+      yc <- ident
+      symbol "#"
+      y <- ident
+    
+      symbol "->"
+
+      c <- term      
+      
+      return $ TensorElimSimple s mot (x, xc) (y, yc) c
+    )
   <|> try (
     do
       symbol "tensormatch"
@@ -153,7 +179,7 @@ term =
         -- symbol "/"
         -- v <- ident
         return t
-      symbol "for" 
+      symbol "at" 
       p <- palette
       symbol "|"
       omega <- flip sepBy (symbol ",") $ do
@@ -178,7 +204,7 @@ term =
       symbol "#"
       x <- ident
 
-      symbol "⊗"
+      tensorSym
 
       yc <- ident
       symbol "#"

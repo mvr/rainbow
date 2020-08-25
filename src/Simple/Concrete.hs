@@ -153,8 +153,16 @@ data Term where
     -> {- branch -} Term 
     -> Term
 
-  HomLam :: Ident -> Term -> Term
-  HomApp :: Term -> Term -> Term
+  TensorElimSimple :: Term
+    -> {- motive -} Ty 
+    -> {- new left var and col -} (Ident, Ident) 
+    -> {- new right var and col -} (Ident, Ident)
+    -> {- branch -} Term 
+    -> Term
+
+  HomLam :: {- body colour -} Ident -> {- var colour -} Ident -> {- var name -} Ident -> Term -> Term
+  HomApp :: Slice -> Term -> Slice -> Term -> Term
+  
   deriving (Show)
 
 data Decl where

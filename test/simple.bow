@@ -19,23 +19,16 @@ let idem : (♮♮A) -> ♮A =
 
 let sym : (A ⊗ B) -> (B ⊗ A) = 
   fun p -> 
-  tensormatch . | p for . | z -> B ⊗ A with
-    z = xc#x ⊗ yc#y -> << yc # y , xc # x >> 
-  
--- let assoc : ((A ⊗ B) ⊗ C) -> (A ⊗ (B ⊗ C)) = 
---   fun t -> 
---   tensormatch . | t for . | w -> A ⊗ (B ⊗ C) with
---   w = pc#p ⊗ zc#z -> 
---     tensormatch (pc/pc' = . ⊗ zc/zc' = .) | p, z for (pc'=. ⊗ zc'=.) | pc'#p', zc'#z' -> A ⊗ (B ⊗ C) with
---     p' = xc#x ⊗ yc#y -> << xc # x , yc zc' # << yc # y, zc' # z' >> >>
+  tensormatch p at B ⊗ A with
+    xc#x ⊗ yc#y -> << yc # y , xc # x >> 
 
 let assoc : ((A ⊗ B) ⊗ C) -> (A ⊗ (B ⊗ C)) = 
   fun t -> 
-  tensormatch . | t for . | w -> A ⊗ (B ⊗ C) with
-  w = pc#p ⊗ zc#z -> 
-    tensormatch (pc/pc' = . ⊗ zc/zc' = .) | p, z for (pc'=. ⊗ zc'=.) | pc'#p', zc'#z' -> A ⊗ (B ⊗ C) with
+  tensormatch t at A ⊗ (B ⊗ C) with
+  pc#p ⊗ zc#z -> 
+    tensormatch (pc/pc' ⊗ zc/zc') | p, z at (pc' ⊗ zc') | pc'#p', zc'#z' -> A ⊗ (B ⊗ C) with
     p' = xc#x ⊗ yc#y -> << xc # x , yc zc' # << yc # y, zc' # z' >> >>
 
--- TODO: implement some shortcuts in the parser for common tensormatch cases
+-- TODO: implement slice guessing
 -- TODO: implement hom
 -- TODO: implement counter examples, things that shouldn't typecheck
