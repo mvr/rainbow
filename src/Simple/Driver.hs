@@ -187,6 +187,16 @@ processDecl env@(Env binds@(Bindings postTypes bindings) checkEnv) (C.Def name c
   
   return (Env (Bindings postTypes ((BindTopLevel name):bindings)) (S.envExtendTop ty checkEnv))
 
+processDecl env@(Env binds checkEnv) (C.Dont name cbody cty) = do
+  let body = bind (C.Palette []) binds cbody
+  let ty = bindTy binds cty
+  
+  case S.runCheckM checkEnv $ S.check body ty of 
+    Left err -> putStrLn $ "Correctly failed: " ++ name ++ " because " ++ err
+    Right () -> putStrLn $ "Error: " ++ name ++ " should not have typechecked!"
+  
+  return env 
+
 processDecl env@(Env binds@(Bindings postTypes bindings) checkEnv) (C.PostType name) = do  
   putStrLn $ "Postulated type: " ++ name
 

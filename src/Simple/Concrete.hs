@@ -176,4 +176,5 @@ data Term where
 data Decl where
   PostType :: Ident -> Decl
   Def :: Ident -> Term -> Ty -> Decl
+  Dont :: Ident -> Term -> Ty -> Decl
   deriving (Show)

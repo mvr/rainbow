@@ -24,7 +24,7 @@ symbol :: String -> Parser String
 symbol = L.symbol sc
 
 reserved :: [String]
-reserved = ["let", "fun", "fst", "snd", "type", "at", "with", "tensormatch", "hom"]
+reserved = ["let", "fun", "fst", "snd", "type", "at", "with", "tensormatch", "hom", "don't"]
 
 ident :: Parser Ident
 ident = (lexeme . try) (p >>= check)
@@ -291,3 +291,13 @@ decl =
     symbol "=" 
     body <- term
     return (Def n body t)
+  <|>
+  do
+    symbol "don't" 
+    symbol "let" 
+    n <- ident
+    symbol ":" 
+    t <- ty
+    symbol "=" 
+    body <- term
+    return (Dont n body t)

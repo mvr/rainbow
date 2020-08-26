@@ -5,8 +5,16 @@ type C
 let diag : A -> (A * A) =
   fun a -> <a, a>
 
+don't let tensordiag : A -> (A ⊗ A) =
+  fun a -> << a, a >>
+
 let pr : (B * A) -> A =
   fun p -> snd p
+
+don't let tensorpr : (B ⊗ A) -> A =
+  fun t ->  
+  tensormatch t at A with       
+    <<b, a>>[bc,ac] -> a
 
 let unit : A -> ♮A = 
   fun a -> undin _a
@@ -43,7 +51,6 @@ let homcurry : ((A ⊗ B) ⊸ C) -> (A ⊸ (B ⊸ C)) =
   hom[fc', bc] b -o
   (f @ << a, b >>)
 
--- TODO: implement slice guessing
--- TODO: implement counter examples, things that shouldn't typecheck
+-- TODO: allow not binding new colours
 -- TODO: pretty printing
 -- TODO: implement unit ?!?!
