@@ -52,7 +52,8 @@ data Term where
   TensorElim :: Palette -> [ColourIndex] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
 
   HomLam :: Term -> Term
-  HomApp :: Term -> Term -> Term
+  HomApp :: SliceIndex -> Term -> SliceIndex -> Term -> Term
+
   deriving (Show)
 
 tensorElimSimple :: Term -> {- motive -} Ty -> {- branch -} Term -> Term
@@ -87,6 +88,11 @@ envEntryWkCol amt pal c (EnvTerm (Just c') ty) = EnvTerm (Just $ palWkAt amt pal
 envEntryWkCol amt pal c (EnvTerm Nothing ty) = EnvTerm Nothing ty
 envEntryWkCol amt pal c (EnvTopLevel ty) = EnvTopLevel ty
 
+envEntryWkColHom :: Palette -> EnvEntry -> EnvEntry
+envEntryWkColHom pal (EnvTerm (Just c') ty) = EnvTerm (Just $ palWkTensor pal c') ty 
+envEntryWkColHom pal (EnvTerm Nothing ty) = EnvTerm Nothing ty
+envEntryWkColHom pal (EnvTopLevel ty) = EnvTopLevel ty
+
 envRestrict :: SliceIndex -> Env -> Env
 envRestrict sl (Env { envPal, envVars }) 
   = Env { envPal = palRestrict envPal sl,
@@ -99,6 +105,13 @@ envExtendTele (Tele telePal teleVars) (Env envPal envVars )
 
 envExtendSingle :: Ty -> Env -> Env
 envExtendSingle ty m@(Env _ vars) = m { envVars = (EnvTerm (Just TopColour) ty) : vars }  
+
+envExtendSingleHom :: Ty -> Env -> Env
+envExtendSingleHom ty (Env pal vars) 
+  = Env { envPal = Palette [TensorPal pal (Palette [])],
+          envVars = (EnvTerm (Just rightCol) ty) : (fmap (envEntryWkColHom pal) vars)
+        }  
+  where rightCol = RightSub 0 TopColour
 
 envExtendTop :: Ty -> Env -> Env
 envExtendTop ty m@(Env _ vars) = m { envVars = (EnvTopLevel ty) : vars }  
@@ -116,6 +129,10 @@ check :: Term -> Ty -> CheckM ()
 check (Lam b) (Pi aty bty) = do
   local (envExtendSingle aty) $ check b bty
 check (Lam b) ty = throwError "Unexpected lambda"
+
+check (HomLam b) (Hom aty bty) = do
+  local (envExtendSingleHom aty) $ check b bty
+check (HomLam b) ty = throwError "Unexpected hom lambda"
   
 check (Pair a b) (Sg aty bty) = do
   check a aty
@@ -171,6 +188,16 @@ synth (App f a) = do
       check a aty
       return bty
     _ -> throwError "expected Pi type"
+
+synth (HomApp fsl f asl a) = do
+  when (not $ validSplit (fsl, asl)) $ throwError "Invalid split"
+
+  fty <- local (envRestrict fsl) $ synth f
+  case fty of 
+    (Hom aty bty) -> do 
+      local (envRestrict asl) $ check a aty 
+      return bty
+    _ -> throwError "expected Hom type"
 
 synth (UndOut n) = do
   nty <- synth n

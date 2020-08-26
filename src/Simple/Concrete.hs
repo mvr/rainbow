@@ -37,6 +37,9 @@ palAddTensor (Palette ((TensorPal cL pL@(Palette pLs) cR pR@(Palette pRs)):ps)) 
                   Palette $ (TensorPal cL (palAddTensor pL (NamedColour c) (r, b)) cL (palAddTensor pR (NamedColour c) (r, b))) : ps'
 -- TODO: This could cause confusing errors if the colour name appears more than once. 
 
+palExtHom :: Palette -> Ident -> Ident -> Palette
+palExtHom pal bodyc yc = Palette [TensorPal (Just bodyc) pal (Just yc) emptyPal]
+
 data Slice where 
   Slice :: {- Colour names -} [Ident] -> Slice
   deriving (Show, Eq)
@@ -98,10 +101,6 @@ palRestrict :: Palette -> Slice -> Palette
 palRestrict pal sl = case palRestrictWName pal sl of
   Just (_, pal') -> pal'
   Nothing -> emptyPal
-
-pal = Palette [TensorPal (Just "pc'") (Palette [TensorPal (Just "xc") (Palette []) (Just "yc") (Palette [])]) (Just "zc'") (Palette []),
-               TensorPal (Just "pc") (Palette []) (Just "zc") (Palette [])]
-sl = Slice ["yc","zc'"]
 
 data SubstPiece where
   TensorPalSub :: Slice -> Ident -> PaletteSubst -> Slice -> Ident -> PaletteSubst -> SubstPiece

@@ -126,6 +126,9 @@ palWkAt amt (Palette ps) (RightSub ni nc) (RightSub i c)
                 RightSub ni (palWkAt amt pr nc c)
 palWkAt amt (Palette ps) (RightSub ni nc) c = c
 
+palWkTensor :: Palette -> ColourIndex -> ColourIndex
+palWkTensor _ col = LeftSub 0 col
+
 --------------------------------------------------
 -- If we don't allow Top or Bot as a subslice:
 

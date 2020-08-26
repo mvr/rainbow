@@ -115,10 +115,15 @@ bind pal env (C.TensorElimSimple s mot (x, xc) (y, yc) c)
     (bind (C.Palette $ (C.palLoneTensor (xc, yc)):cpals) (bindsExtTele env [x, y]) c)
   where (C.Palette cpals) = pal
 
-  -- HomLam :: Ident -> Term -> Term
-  -- HomApp :: Term -> Term -> Term
+bind pal env (C.HomLam bodyc yc y body)
+  = S.HomLam (bind (C.palExtHom pal bodyc yc) (bindsExt env y) body)
 
-
+bind pal env (C.HomApp slf f sla a)
+  = S.HomApp 
+    (fromJust $ bindSlice pal slf) 
+    (bind (C.palRestrict pal slf) env f) 
+    (fromJust $ bindSlice pal sla) 
+    (bind (C.palRestrict pal sla) env a)
 
 data Env = Env { envBindings :: Bindings, envCheckEnv :: S.Env }
 

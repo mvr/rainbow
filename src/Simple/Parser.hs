@@ -24,7 +24,7 @@ symbol :: String -> Parser String
 symbol = L.symbol sc
 
 reserved :: [String]
-reserved = ["let", "fun", "fst", "snd", "type", "at", "with", "tensormatch"]
+reserved = ["let", "fun", "fst", "snd", "type", "at", "with", "tensormatch", "hom"]
 
 ident :: Parser Ident
 ident = (lexeme . try) (p >>= check)
@@ -42,6 +42,9 @@ prodSym = pure () <* (try (symbol "*") <|> symbol "×")
 
 tensorSym :: Parser ()
 tensorSym = pure () <* (try (symbol "*o") <|> symbol "⊗")
+
+homSym :: Parser ()
+homSym = pure () <* (try (symbol "-o") <|> symbol "⊸")
 
 slice :: Parser Slice
 slice = Slice <$> many ident
@@ -97,17 +100,19 @@ atomicTy = BaseTy <$> ident
            <|> Und <$> (symbol "♮" *> ty)
 
 ty :: Parser Ty
-ty = try (Pi <$> atomicTy <* symbol "->" <*> atomicTy)
-  <|> try (Sg <$> atomicTy <* prodSym <*> atomicTy)
-  <|> try (Tensor <$> atomicTy <* tensorSym <*> atomicTy)
+ty = try (Pi <$> atomicTy <* symbol "->" <*> ty)
+  <|> try (Sg <$> atomicTy <* prodSym <*> ty)
+  <|> try (Tensor <$> atomicTy <* tensorSym <*> ty)
+  <|> try (Hom <$> atomicTy <* homSym <*> ty)
   <|> try (Und <$> (symbol "♮" *> ty))
+  <|> try (symbol "(" *> ty <* symbol ")")
   <|> BaseTy <$> ident
 
 atomic :: Parser Term
 atomic = 
   try ( symbol "(" *> term <* symbol ")" )
-  <|> try ( UndIn <$> (symbol "[undin" *> term <* symbol "]"))
-  <|> try ( UndOut <$> (symbol "[undout" *> term <* symbol "]"))
+  <|> try ( UndIn <$> (symbol "undin" *> term))
+  <|> try ( UndOut <$> (symbol "undout" *> term))
   -- <|> try ( Pair <$> (symbol "<" *> term <*> symbol "," <*> term <* symbol ">"))
   <|> try (do
     symbol "<"
@@ -120,14 +125,16 @@ atomic =
   <|> try (
   do
     symbol "<<"
-    slL <- slice
-    symbol "#"
     a <- term
     symbol ","
-    slR <- slice
-    symbol "#"
     b <- term
     symbol ">>"
+    symbol "["
+    slL <- slice
+    symbol ","
+    slR <- slice
+    symbol "]"
+
     return (TensorPair slL a slR b)
   )
   <|> try (ZeroVar <$> (char '_' *> ident))
@@ -153,16 +160,17 @@ term =
       mot <- ty
       symbol "with"
 
-      xc <- ident
-      symbol "#"
+      symbol "<<"
       x <- ident
-
-      tensorSym
-
-      yc <- ident
-      symbol "#"
+      symbol ","
       y <- ident
-    
+      symbol ">>"
+      symbol "["
+      xc <- ident
+      symbol ","
+      yc <- ident
+      symbol "]"
+
       symbol "->"
 
       c <- term      
@@ -184,9 +192,11 @@ term =
       symbol "|"
       omega <- flip sepBy (symbol ",") $ do
         try (do
-                col <- ident
-                symbol "#"
                 v <- ident
+                symbol "["
+                col <- ident
+                symbol "]"                
+            
                 return (v, NamedColour col)
             )
         <|>
@@ -200,21 +210,55 @@ term =
       z <- ident
       symbol "="
 
-      xc <- ident
-      symbol "#"
+      symbol "<<"
       x <- ident
-
-      tensorSym
-
-      yc <- ident
-      symbol "#"
+      symbol ","
       y <- ident
-    
+      symbol ">>"
+      symbol "["
+      xc <- ident
+      symbol ","
+      yc <- ident
+      symbol "]"
+
       symbol "->"
 
       c <- term
 
       return (TensorElim p omega (TeleSubst ps theta) z mot (x, xc) (y, yc) c)
+    )
+  <|> try ( -- hom[rc, bc] b -o <<rc#a, bc#b>>
+    do 
+      symbol "hom" 
+      symbol "["
+      tc <- ident
+      symbol ","
+      ac <- ident
+      symbol "]"
+
+      a <- ident
+
+      homSym
+
+      body <- term
+
+      return (HomLam tc ac a body)
+    )
+
+  <|> try ( 
+    do 
+      symbol "("
+      f <- term
+      symbol "@"
+      a <- term
+      symbol ")"
+      symbol "["
+      fc <- slice
+      symbol ","
+      ac <- slice
+      symbol "]"
+
+      return (HomApp fc f ac a)
     )
   <|> (
     do 

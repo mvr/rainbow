@@ -9,26 +9,41 @@ let pr : (B * A) -> A =
   fun p -> snd p
 
 let unit : A -> ♮A = 
-  fun a -> [undin _a]
+  fun a -> undin _a
 
 let counit : (♮A) -> A = 
-  fun a -> [undout a]
+  fun a -> undout a
 
 let idem : (♮♮A) -> ♮A = 
-  fun a -> [undin [undout [undout _a]]]
+  fun a -> undin (undout (undout _a))
 
 let sym : (A ⊗ B) -> (B ⊗ A) = 
   fun p -> 
   tensormatch p at B ⊗ A with
-    xc#x ⊗ yc#y -> << yc # y , xc # x >> 
+    <<x , y>>[xc, yc] -> <<y, x>>[yc, xc]
 
 let assoc : ((A ⊗ B) ⊗ C) -> (A ⊗ (B ⊗ C)) = 
   fun t -> 
   tensormatch t at A ⊗ (B ⊗ C) with
-  pc#p ⊗ zc#z -> 
-    tensormatch (pc/pc' ⊗ zc/zc') | p, z at (pc' ⊗ zc') | pc'#p', zc'#z' -> A ⊗ (B ⊗ C) with
-    p' = xc#x ⊗ yc#y -> << xc # x , yc zc' # << yc # y, zc' # z' >> >>
+  <<p, z>>[pc,zc] -> 
+    tensormatch (pc/pc' ⊗ zc/zc') | p, z at (pc' ⊗ zc') | p'[pc'], z'[zc'] -> A ⊗ (B ⊗ C) with
+    p' = <<x , y>>[xc, yc] -> <<x, <<y, z'>>[yc, zc'] >>[xc, yc zc']
+
+let homunit : A -> (B ⊸ (A ⊗ B)) = 
+  fun a -> hom[ac, bc] b -o <<a, b>>[ac,bc]
+
+let homcounit : ((B ⊸ A) ⊗ B) -> A =
+  fun t -> 
+  tensormatch t at A with
+    <<f , b>>[fc, bc] -> (f @ b)[fc, bc]
+
+let homcurry : ((A ⊗ B) ⊸ C) -> (A ⊸ (B ⊸ C)) = 
+  fun f ->
+  hom[fc, ac] a -o
+  hom[fc', bc] b -o
+  (f @ << a, b >>[ac, bc])[fc, ac bc]
 
 -- TODO: implement slice guessing
--- TODO: implement hom
 -- TODO: implement counter examples, things that shouldn't typecheck
+-- TODO: pretty printing
+-- TODO: implement unit ?!?!
