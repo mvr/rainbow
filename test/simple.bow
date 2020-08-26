@@ -20,28 +20,28 @@ let idem : (♮♮A) -> ♮A =
 let sym : (A ⊗ B) -> (B ⊗ A) = 
   fun p -> 
   tensormatch p at B ⊗ A with
-    <<x , y>>[xc, yc] -> <<y, x>>[yc, xc]
+    <<x , y>>[xc, yc] -> <<y, x>>
 
 let assoc : ((A ⊗ B) ⊗ C) -> (A ⊗ (B ⊗ C)) = 
   fun t -> 
   tensormatch t at A ⊗ (B ⊗ C) with
   <<p, z>>[pc,zc] -> 
     tensormatch (pc/pc' ⊗ zc/zc') | p, z at (pc' ⊗ zc') | p'[pc'], z'[zc'] -> A ⊗ (B ⊗ C) with
-    p' = <<x , y>>[xc, yc] -> <<x, <<y, z'>>[yc, zc'] >>[xc, yc zc']
+    p' = <<x , y>>[xc, yc] -> <<x, <<y, z'>> >>
 
 let homunit : A -> (B ⊸ (A ⊗ B)) = 
-  fun a -> hom[ac, bc] b -o <<a, b>>[ac,bc]
+  fun a -> hom[ac, bc] b -o <<a, b>>
 
 let homcounit : ((B ⊸ A) ⊗ B) -> A =
   fun t -> 
   tensormatch t at A with
-    <<f , b>>[fc, bc] -> (f @ b)[fc, bc]
+    <<f , b>>[fc, bc] -> (f @ b)
 
 let homcurry : ((A ⊗ B) ⊸ C) -> (A ⊸ (B ⊸ C)) = 
   fun f ->
   hom[fc, ac] a -o
   hom[fc', bc] b -o
-  (f @ << a, b >>[ac, bc])[fc, ac bc]
+  (f @ << a, b >>)
 
 -- TODO: implement slice guessing
 -- TODO: implement counter examples, things that shouldn't typecheck

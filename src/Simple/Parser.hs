@@ -47,7 +47,8 @@ homSym :: Parser ()
 homSym = pure () <* (try (symbol "-o") <|> symbol "⊸")
 
 slice :: Parser Slice
-slice = Slice <$> many ident
+slice = try ( symbol "." *> pure (Slice []) )
+  <|> (Slice <$> many (NamedColour <$> ident))
 
 palettePiece :: Parser PalettePiece
 palettePiece = do
@@ -129,11 +130,15 @@ atomic =
     symbol ","
     b <- term
     symbol ">>"
-    symbol "["
-    slL <- slice
-    symbol ","
-    slR <- slice
-    symbol "]"
+    (slL, slR) <- do
+      symbol "["
+      slL <- slice
+      symbol ","
+      slR <- slice
+      symbol "]"
+      return (Just slL, Just slR)
+      <|>
+      return (Nothing, Nothing)
 
     return (TensorPair slL a slR b)
   )
@@ -230,6 +235,7 @@ term =
   <|> try ( -- hom[rc, bc] b -o <<rc#a, bc#b>>
     do 
       symbol "hom" 
+
       symbol "["
       tc <- ident
       symbol ","
@@ -252,11 +258,17 @@ term =
       symbol "@"
       a <- term
       symbol ")"
-      symbol "["
-      fc <- slice
-      symbol ","
-      ac <- slice
-      symbol "]"
+
+      (fc, ac) <- do
+        symbol "["
+        fc <- slice
+        symbol ","
+        ac <- slice
+        symbol "]"
+        return (Just fc, Just ac)
+        <|>
+        return (Nothing, Nothing)
+      
 
       return (HomApp fc f ac a)
     )

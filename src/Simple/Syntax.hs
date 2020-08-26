@@ -61,7 +61,7 @@ tensorElimSimple s mot c = TensorElim (Palette []) [TopColour] (TeleSubst (Palet
 
 data EnvEntry = EnvTerm (Maybe ColourIndex) Ty
               | EnvTopLevel Ty
-  deriving (Show)             
+  deriving (Show)
               
 data Env = Env { envPal :: Palette, envVars :: [EnvEntry] }
   deriving (Show)

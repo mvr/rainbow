@@ -4,6 +4,7 @@ module Simple.Concrete where
 import Debug.Trace
 
 import Data.Maybe (mapMaybe)
+import Data.List (nub)
 
 type Ident = String
 
@@ -18,14 +19,14 @@ data Palette = Palette [PalettePiece]
 emptyPal :: Palette
 emptyPal = Palette []
 
+palLoneTensor :: (Ident, Ident) -> PalettePiece
+palLoneTensor (r, b) = TensorPal (Just r) emptyPal (Just b) emptyPal
+
 data Colour where
   NamedColour :: Ident -> Colour
   ZeroColour :: Colour
   TopColour :: Colour
-  deriving (Show)
-
-palLoneTensor :: (Ident, Ident) -> PalettePiece
-palLoneTensor (r, b) = TensorPal (Just r) emptyPal (Just b) emptyPal
+  deriving (Eq, Show)
 
 palAddTensor :: Palette -> Colour -> (Ident, Ident) -> Palette
 palAddTensor (Palette ps) TopColour (r, b) = Palette $ (palLoneTensor (r, b)):ps
@@ -40,9 +41,17 @@ palAddTensor (Palette ((TensorPal cL pL@(Palette pLs) cR pR@(Palette pRs)):ps)) 
 palExtHom :: Palette -> Ident -> Ident -> Palette
 palExtHom pal bodyc yc = Palette [TensorPal (Just bodyc) pal (Just yc) emptyPal]
 
+colExtHom :: {- body colour -} Ident -> Colour -> Colour
+colExtHom bodyc TopColour = NamedColour bodyc
+colExtHom bodyc (NamedColour n) = NamedColour n
+colExtHom bodyc ZeroColour = ZeroColour
+
 data Slice where 
-  Slice :: {- Colour names -} [Ident] -> Slice
+  Slice :: {- Colour names -} [Colour] -> Slice
   deriving (Show, Eq)
+
+sliceUnion :: Slice -> Slice -> Slice
+sliceUnion (Slice sl1) (Slice sl2) = Slice $ nub (sl1 ++ sl2)
 
 -- palRestrictHalf :: Slice -> Maybe Ident -> Palette -> Maybe (Maybe Ident, Palette)
 -- palRestrictHalf (Slice ns) (Just n) pal 
@@ -75,7 +84,7 @@ data Slice where
 
 palRestrictHalf :: Slice -> Maybe Ident -> Palette -> Maybe (Maybe Ident, Palette)
 palRestrictHalf sl@(Slice ns) (Just n) pal 
-  | n `elem` ns = Just (Just n, pal)
+  | (NamedColour n) `elem` ns = Just (Just n, pal)
   | otherwise = palRestrictWName pal sl 
 palRestrictHalf sl Nothing pal = palRestrictWName pal sl 
 
@@ -141,7 +150,7 @@ data Term where
   UndIn :: Term -> Term
   UndOut :: Term -> Term
   
-  TensorPair :: Slice -> Term -> Slice -> Term -> Term
+  TensorPair :: Maybe Slice -> Term -> Maybe Slice -> Term -> Term
   TensorElim :: Palette 
     -> {- Var names and their colours variables -} [(Ident, Colour)] 
     -> TeleSubst 
@@ -160,7 +169,7 @@ data Term where
     -> Term
 
   HomLam :: {- body colour -} Ident -> {- var colour -} Ident -> {- var name -} Ident -> Term -> Term
-  HomApp :: Slice -> Term -> Slice -> Term -> Term
+  HomApp :: Maybe Slice -> Term -> Maybe Slice -> Term -> Term
   
   deriving (Show)
 
