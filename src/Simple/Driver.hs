@@ -3,6 +3,7 @@ module Simple.Driver where
 
 import Debug.Trace
 
+import Control.Monad.State
 import Data.List (findIndex, find)
 import Data.Maybe (fromJust, fromMaybe)
 
@@ -100,8 +101,10 @@ bindPalSubstPiece pal env (C.TensorPalSub slL _ psL slR _ psR)
 bindPalSubst :: C.Palette -> Bindings -> C.PaletteSubst -> PaletteSubst
 bindPalSubst pal env (C.PaletteSubst ps) = PaletteSubst $ fmap (bindPalSubstPiece pal env) ps
 
-bindTeleSubst :: C.Palette -> Bindings -> C.TeleSubst -> S.TeleSubst
-bindTeleSubst pal env (C.TeleSubst kappa as) = S.TeleSubst (bindPalSubst pal env kappa) (fmap (bind pal env) as)
+bindTeleSubst :: C.Palette -> Bindings -> C.TeleSubst -> State SymCounter S.TeleSubst
+bindTeleSubst pal env (C.TeleSubst kappa as) = do 
+  ts <- mapM (bind pal env) as 
+  return $ S.TeleSubst (bindPalSubst pal env kappa) ts
 
 -- Silly...
 bindTy :: Bindings -> C.Ty -> S.Ty
@@ -112,73 +115,113 @@ bindTy env (C.Und a) = S.Und (bindTy env a)
 bindTy env (C.Tensor a b) = S.Tensor (bindTy env a) (bindTy env b)
 bindTy env (C.Hom a b) = S.Hom (bindTy env a) (bindTy env b)
 
-bind :: C.Palette -> Bindings -> C.Term -> S.Term
-bind pal env (C.Check a ty) = S.Check (bind pal env a) (bindTy env ty)
-bind pal env (C.Var name) = S.Var (bindsLookup env name)
-bind pal env (C.ZeroVar name) = S.ZeroVar (bindsLookup env name)
-bind pal env (C.Lam name t) = S.Lam (bind pal (bindsExt env name) t)
+type SymCounter = Int
+
+genColLike :: C.Ident -> State SymCounter C.Ident
+genColLike n = do
+  i <- get
+  put (i+1)
+  return $ "?" ++ n ++ show i
+
+bind :: C.Palette -> Bindings -> C.Term -> State SymCounter S.Term
+bind pal env (C.Check a ty) = S.Check <$> (bind pal env a) <*> pure (bindTy env ty)
+bind pal env (C.Var name) = pure $ S.Var (bindsLookup env name)
+bind pal env (C.ZeroVar name) = pure $ S.ZeroVar (bindsLookup env name)
+bind pal env (C.Lam name t) = S.Lam <$> (bind pal (bindsExt env name) t)
 bind pal env (C.App f []) = bind pal env f
-bind pal env (C.App f args) = S.App (bind pal env (C.App f (init args))) (bind pal env (last args)) -- yes this could be done better 
-bind pal env (C.Pair a b) = S.Pair (bind pal env a) (bind pal env b)
-bind pal env (C.Fst p) = S.Fst (bind pal env p)
-bind pal env (C.Snd p) = S.Snd (bind pal env p)
-bind pal env (C.UndIn a) = S.UndIn (bind pal env a)
-bind pal env (C.UndOut a) = S.UndOut (bind pal env a)
+bind pal env (C.App f args) = S.App <$> (bind pal env (C.App f (init args))) <*> (bind pal env (last args)) -- yes this could be done better 
+bind pal env (C.Pair a b) = S.Pair <$> (bind pal env a) <*> (bind pal env b)
+bind pal env (C.Fst p) = S.Fst <$> (bind pal env p)
+bind pal env (C.Snd p) = S.Snd <$> (bind pal env p)
+bind pal env (C.UndIn a) = S.UndIn <$> (bind pal env a)
+bind pal env (C.UndOut a) = S.UndOut <$> (bind pal env a)
 
-bind pal env t@(C.TensorPair slL a slR b) 
-  = let slL' = fromMaybe (guessSlice pal env a) slL
-        slR' = fromMaybe (guessSlice pal env b) slR in
-    S.TensorPair 
-      (fromJust $ bindSlice pal slL') 
-      (bind (C.palRestrict pal slL') env a) 
-      (fromJust $ bindSlice pal slR') 
-      (bind (C.palRestrict pal slR') env b)
+bind pal env t@(C.TensorPair slL a slR b) = do
+  let slL' = fromMaybe (guessSlice pal env a) slL
+      slR' = fromMaybe (guessSlice pal env b) slR 
+  bounda <- bind (C.palRestrict pal slL') env a
+  boundb <- bind (C.palRestrict pal slR') env b
+  
+  return $ S.TensorPair (fromJust $ bindSlice pal slL') bounda (fromJust $ bindSlice pal slR') boundb
 
-bind pal env (C.TensorElim psi omega theta z mot (x, xc) (y, yc) c)
-  = S.TensorElim 
+bind pal env (C.TensorElim psi omega theta z mot (x, xc) (y, yc) c) = do
+  xc' <- case xc of 
+           Just xc -> pure xc
+           Nothing -> genColLike x
+  yc' <- case yc of 
+           Just yc -> pure yc
+           Nothing -> genColLike y
+
+  let zIdx = (fromJust $ findIndex ((== z) . fst) omega)
+      zCol = snd $ fromJust $ find ((==z) . fst) omega
+      (C.Palette cpsis) = C.palAddTensor psi zCol (xc', yc')
+      (C.Palette cpals) = pal
+      (before, _:after) = splitAt zIdx omega
+      omega' = fmap (uncurry BindTerm) before
+               ++ [(BindTerm x (C.NamedColour xc')), (BindTerm y (C.NamedColour yc'))] 
+                 ++ fmap (uncurry BindTerm) after
+  
+  boundtheta <- bindTeleSubst pal env theta
+  boundc <- bind (C.Palette $ cpsis ++ cpals) (bindsExtTele env omega') c
+  
+  return $ S.TensorElim 
       (bindPal psi)
       (fmap (fromJust . bindColour psi . snd) omega) 
-      (bindTeleSubst pal env theta) 
+      boundtheta
       zIdx
       (bindTy env mot) 
-      (bind (C.Palette $ cpsis ++ cpals) (bindsExtTele env omega') c)
-      -- (bind (C.Palette $ cpsis ++ cpals) undefined c)
-  where zIdx = (fromJust $ findIndex ((== z) . fst) omega)
-        zCol = snd $ fromJust $ find ((==z) . fst) omega
-        (C.Palette cpsis) = C.palAddTensor psi zCol (xc, yc)
-        (C.Palette cpals) = pal
-        (before, _:after) = splitAt zIdx omega
-        omega' = fmap (uncurry BindTerm) before
-                 ++ [(BindTerm x (C.NamedColour xc)), (BindTerm y (C.NamedColour yc))] 
-                 ++ fmap (uncurry BindTerm) after
+      boundc
+  where 
 
-bind pal env (C.TensorElimSimple s mot (x, xc) (y, yc) c)
-  = S.TensorElim 
+bind pal env (C.TensorElimSimple s mot (x, xc) (y, yc) c) = do
+  xc' <- case xc of 
+           Just xc -> pure xc
+           Nothing -> genColLike x
+  yc' <- case yc of 
+           Just yc -> pure yc
+           Nothing -> genColLike y
+
+  bounds <- bind pal env s
+  boundc <- bind (C.Palette $ (C.palLoneTensor (xc', yc')):cpals) (bindsExtTele env [(BindTerm x (C.NamedColour xc')), (BindTerm y (C.NamedColour yc'))]) c
+
+  return $ S.TensorElim 
     (Palette [])
     [TopColour]
-    (S.TeleSubst (PaletteSubst []) [bind pal env s])
+    (S.TeleSubst (PaletteSubst []) [bounds])
     0
     (bindTy env mot)
-    (bind (C.Palette $ (C.palLoneTensor (xc, yc)):cpals) (bindsExtTele env [(BindTerm x (C.NamedColour xc)), (BindTerm y (C.NamedColour yc))]) c)
+    boundc
   where (C.Palette cpals) = pal
+  
+bind pal env (C.HomLam bodyc yc y body) = do
+  bodyc' <- case bodyc of 
+           Just bodyc -> pure bodyc
+           Nothing -> genColLike "t"
+  yc' <- case yc of 
+           Just yc -> pure yc
+           Nothing -> genColLike y
 
-bind pal env (C.HomLam bodyc yc y body)
-  = S.HomLam (bind (C.palExtHom pal bodyc yc) (bindsExtHom env bodyc yc y) body)
+  boundbody <- bind (C.palExtHom pal (Just bodyc') (Just yc')) (bindsExtHom env bodyc' yc' y) body
+  return $ S.HomLam boundbody
 
-bind pal env (C.HomApp slL f slR a)
-  = let slL' = fromMaybe (guessSlice pal env f) slL
-        slR' = fromMaybe (guessSlice pal env a) slR in
-    S.HomApp 
+bind pal env (C.HomApp slL f slR a) = do
+  let slL' = fromMaybe (guessSlice pal env f) slL
+      slR' = fromMaybe (guessSlice pal env a) slR 
+
+  boundf <- bind (C.palRestrict pal slL') env f
+  bounda <- bind (C.palRestrict pal slR') env a
+
+  return $ S.HomApp 
     (fromJust $ bindSlice pal slL') 
-    (bind (C.palRestrict pal slL') env f) 
+    boundf
     (fromJust $ bindSlice pal slR') 
-    (bind (C.palRestrict pal slR') env a)
+    bounda
 
 data Env = Env { envBindings :: Bindings, envCheckEnv :: S.Env }
 
 processDecl :: Env -> C.Decl -> IO Env
 processDecl env@(Env binds@(Bindings postTypes bindings) checkEnv) (C.Def name cbody cty) = do
-  let body = bind (C.Palette []) binds cbody
+  let body = evalState (bind (C.Palette []) binds cbody) 0
   let ty = bindTy binds cty
   
   case S.runCheckM checkEnv $ S.check body ty of 
@@ -188,7 +231,7 @@ processDecl env@(Env binds@(Bindings postTypes bindings) checkEnv) (C.Def name c
   return (Env (Bindings postTypes ((BindTopLevel name):bindings)) (S.envExtendTop ty checkEnv))
 
 processDecl env@(Env binds checkEnv) (C.Dont name cbody cty) = do
-  let body = bind (C.Palette []) binds cbody
+  let body = evalState (bind (C.Palette []) binds cbody) 0
   let ty = bindTy binds cty
   
   case S.runCheckM checkEnv $ S.check body ty of 

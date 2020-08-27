@@ -38,8 +38,8 @@ palAddTensor (Palette ((TensorPal cL pL@(Palette pLs) cR pR@(Palette pRs)):ps)) 
                   Palette $ (TensorPal cL (palAddTensor pL (NamedColour c) (r, b)) cL (palAddTensor pR (NamedColour c) (r, b))) : ps'
 -- TODO: This could cause confusing errors if the colour name appears more than once. 
 
-palExtHom :: Palette -> Ident -> Ident -> Palette
-palExtHom pal bodyc yc = Palette [TensorPal (Just bodyc) pal (Just yc) emptyPal]
+palExtHom :: Palette -> Maybe Ident -> Maybe Ident -> Palette
+palExtHom pal bodyc yc = Palette [TensorPal bodyc pal yc emptyPal]
 
 colExtHom :: {- body colour -} Ident -> Colour -> Colour
 colExtHom bodyc TopColour = NamedColour bodyc
@@ -156,19 +156,19 @@ data Term where
     -> TeleSubst 
     -> {- which var in tele -} Ident 
     -> {- motive -} Ty 
-    -> {- new left var and col -} (Ident, Ident) 
-    -> {- new right var and col -} (Ident, Ident)
+    -> {- new left var and col -} (Ident, Maybe Ident) 
+    -> {- new right var and col -} (Ident, Maybe Ident)
     -> {- branch -} Term 
     -> Term
 
   TensorElimSimple :: Term
     -> {- motive -} Ty 
-    -> {- new left var and col -} (Ident, Ident) 
-    -> {- new right var and col -} (Ident, Ident)
+    -> {- new left var and col -} (Ident, Maybe Ident) 
+    -> {- new right var and col -} (Ident, Maybe Ident)
     -> {- branch -} Term 
     -> Term
 
-  HomLam :: {- body colour -} Ident -> {- var colour -} Ident -> {- var name -} Ident -> Term -> Term
+  HomLam :: {- body colour -} Maybe Ident -> {- var colour -} Maybe Ident -> {- var name -} Ident -> Term -> Term
   HomApp :: Maybe Slice -> Term -> Maybe Slice -> Term -> Term
   
   deriving (Show)

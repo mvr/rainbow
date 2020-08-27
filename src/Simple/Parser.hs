@@ -170,11 +170,15 @@ term =
       symbol ","
       y <- ident
       symbol ">>"
-      symbol "["
-      xc <- ident
-      symbol ","
-      yc <- ident
-      symbol "]"
+      (xc, yc) <- do
+        symbol "["
+        xc <- ident
+        symbol ","
+        yc <- ident
+        symbol "]"
+        return (Just xc, Just yc)
+        <|>
+        return (Nothing, Nothing)
 
       symbol "->"
 
@@ -220,11 +224,16 @@ term =
       symbol ","
       y <- ident
       symbol ">>"
-      symbol "["
-      xc <- ident
-      symbol ","
-      yc <- ident
-      symbol "]"
+
+      (xc, yc) <- do
+        symbol "["
+        xc <- ident
+        symbol ","
+        yc <- ident
+        symbol "]"
+        return (Just xc, Just yc)
+        <|>
+        return (Nothing, Nothing)
 
       symbol "->"
 
@@ -236,11 +245,16 @@ term =
     do 
       symbol "hom" 
 
-      symbol "["
-      tc <- ident
-      symbol ","
-      ac <- ident
-      symbol "]"
+      (tc, ac) <- do
+        symbol "["
+        tc <- ident
+        symbol ","
+        ac <- ident
+        symbol "]"
+        return (Just tc, Just ac)
+        <|>
+        return (Nothing, Nothing)
+
 
       a <- ident
 

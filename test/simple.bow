@@ -14,7 +14,7 @@ let pr : (B * A) -> A =
 don't let tensorpr : (B ⊗ A) -> A =
   fun t ->  
   tensormatch t at A with       
-    <<b, a>>[bc,ac] -> a
+    <<b, a>> -> a
 
 let unit : A -> ♮A = 
   fun a -> undin _a
@@ -28,28 +28,35 @@ let idem : (♮♮A) -> ♮A =
 let sym : (A ⊗ B) -> (B ⊗ A) = 
   fun p -> 
   tensormatch p at B ⊗ A with
-    <<x , y>>[xc, yc] -> <<y, x>>
+    <<x , y>> -> <<y, x>>
 
 let assoc : ((A ⊗ B) ⊗ C) -> (A ⊗ (B ⊗ C)) = 
   fun t -> 
   tensormatch t at A ⊗ (B ⊗ C) with
   <<p, z>>[pc,zc] -> 
     tensormatch (pc/pc' ⊗ zc/zc') | p, z at (pc' ⊗ zc') | p'[pc'], z'[zc'] -> A ⊗ (B ⊗ C) with
-    p' = <<x , y>>[xc, yc] -> <<x, <<y, z'>> >>
+    p' = <<x , y>> -> <<x, <<y, z'>> >>
 
 let homunit : A -> (B ⊸ (A ⊗ B)) = 
-  fun a -> hom[ac, bc] b -o <<a, b>>
+  fun a -> hom b -o <<a, b>>
 
 let homcounit : ((B ⊸ A) ⊗ B) -> A =
   fun t -> 
   tensormatch t at A with
-    <<f , b>>[fc, bc] -> (f @ b)
+    <<f , b>> -> (f @ b)
 
 let homcurry : ((A ⊗ B) ⊸ C) -> (A ⊸ (B ⊸ C)) = 
   fun f ->
-  hom[fc, ac] a -o
-  hom[fc', bc] b -o
+  hom a -o
+  hom b -o
   (f @ << a, b >>)
+
+-- let unitor : (A ⊗ 𝕊) -> A = 
+--   fun t -> 
+--   tensormatch t at A with
+--   <<a, s>> -> 
+--     unitmatch s at A with
+--     <<>>^i -> a^i -- or ✧?
 
 -- TODO: allow not binding new colours
 -- TODO: pretty printing

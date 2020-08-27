@@ -1,7 +1,4 @@
-{-# LANGUAGE GADTs #-}
 module Palette where
-
-import Debug.Trace
 
 data PalettePiece where
   TensorPal :: Palette -> Palette -> PalettePiece
@@ -126,8 +123,8 @@ palWkAt amt (Palette ps) (RightSub ni nc) (RightSub i c)
                 RightSub ni (palWkAt amt pr nc c)
 palWkAt amt (Palette ps) (RightSub ni nc) c = c
 
-palWkTensor :: Palette -> ColourIndex -> ColourIndex
-palWkTensor _ col = LeftSub 0 col
+colExtHom :: ColourIndex -> ColourIndex
+colExtHom col = LeftSub 0 col
 
 --------------------------------------------------
 -- If we don't allow Top or Bot as a subslice:

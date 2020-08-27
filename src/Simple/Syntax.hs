@@ -1,7 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE FlexibleContexts #-}
 module Simple.Syntax where
 
 import Debug.Trace
@@ -89,7 +85,7 @@ envEntryWkCol amt pal c (EnvTerm Nothing ty) = EnvTerm Nothing ty
 envEntryWkCol amt pal c (EnvTopLevel ty) = EnvTopLevel ty
 
 envEntryWkColHom :: Palette -> EnvEntry -> EnvEntry
-envEntryWkColHom pal (EnvTerm (Just c') ty) = EnvTerm (Just $ palWkTensor pal c') ty 
+envEntryWkColHom pal (EnvTerm (Just c') ty) = EnvTerm (Just $ colExtHom c') ty 
 envEntryWkColHom pal (EnvTerm Nothing ty) = EnvTerm Nothing ty
 envEntryWkColHom pal (EnvTopLevel ty) = EnvTopLevel ty
 
@@ -229,46 +225,3 @@ synth a = throwError $ "cannot synth the type of " ++ show a
 synthTele :: TeleSubst -> [ColourIndex] -> CheckM [Ty]
 synthTele (TeleSubst kappa as) cs = forM (zip as cs) $ \(a, c) -> 
   local (envRestrict $ sliceSubst (colourToSlice c) kappa) (synth a)
-
-
--- synth a sl = do
---   (sl', a') <- synthSynSpl a
---   when (sl /= sl') $ throwError "split mismatch"
---   return a'
-
--- synthSynSpl :: Term -> CheckM (SliceIndex, Ty)
--- synthSynSpl (Var i) = asks (flip envLookupVar i)
-
--- synthSynSpl (Fst p) = do
---   (sl, ty) <- synthSynSpl p
---   case ty of 
---     (Sg a b) -> return (sl, a)
---     _ -> throwError "expected Sg type"
-
--- synthSynSpl (App f a) = do
---   (sl, fty) <- synthSynSpl f
---   case fty of 
---     (Pi aty bty) -> do 
---       check a aty sl
---       return (sl, bty)
---     _ -> throwError "expected Pi type"
-
--- synthSynSpl a = throwError $ "cannot synth the type of " ++ show a
-
--- checkSynSpl :: Term -> Ty -> CheckM SliceIndex
--- checkSynSpl (Lam b) (Pi aty bty) = throwError "Lambda requires a slice annotation"
-
--- checkSynSpl (TensorPair a b) (Tensor aty bty) = do 
---   asl <- checkSynSpl a aty
---   bsl <- checkSynSpl b bty
---   return $ unionSplit (asl, bsl)
--- checkSynSpl (TensorPair a b) ty = throwError "Unexpected tensor intro"
-
--- checkSynSpl (UndIn a) (Und aty) = do
---   check a aty BotSlice
---   return BotSlice
-
--- checkSynSpl a ty = do
---   (sl, ty') <- synthSynSpl a
---   when (ty /= ty') $ throwError "type mismatch"
---   return sl
