@@ -3,10 +3,10 @@ module Palette where
 data PalettePiece where
   TensorPal :: Palette -> Palette -> PalettePiece
   -- UnitPal :: PalettePiece
-  deriving (Show)
+  deriving (Show, Eq)
 
 data Palette = Palette [PalettePiece]
-  deriving (Show)
+  deriving (Show, Eq)
 
 emptyPal :: Palette
 emptyPal = Palette []
@@ -14,10 +14,10 @@ emptyPal = Palette []
 data SubstPiece where
   TensorPalSub :: SliceIndex -> PaletteSubst -> SliceIndex -> PaletteSubst -> SubstPiece
   -- UnitPalSub :: Unit -> SubstPiece 
-  deriving (Show)
+  deriving (Show, Eq)
   
 data PaletteSubst = PaletteSubst [SubstPiece]
-  deriving (Show)
+  deriving (Show, Eq)
 
 data ColourIndex where -- DeBruijn indices for colours
   TopColour :: ColourIndex
@@ -125,78 +125,6 @@ palWkAt amt (Palette ps) (RightSub ni nc) c = c
 
 colExtHom :: ColourIndex -> ColourIndex
 colExtHom col = LeftSub 0 col
-
---------------------------------------------------
--- If we don't allow Top or Bot as a subslice:
-
-
--- data ColourIndex where -- DeBruijn indices for colours
---   TopColour :: ColourIndex
---   LeftOf :: Int -> ColourIndex 
---   RightOf :: Int -> ColourIndex
---   LeftSub :: Int -> ColourIndex -> ColourIndex
---   RightSub :: Int -> ColourIndex -> ColourIndex
---   deriving (Show, Eq)
-
--- data SliceIndex where 
---   BotSlice :: SliceIndex
---   TopSlice :: SliceIndex 
---   LeftAllSlice :: Int  -> SliceIndex
---   RightAllSlice :: Int -> SliceIndex
---   LeftSubSlice :: Int -> SliceIndex -> SliceIndex
---   RightSubSlice :: Int -> SliceIndex -> SliceIndex
---   LeftSubRightAllSlice :: Int -> SliceIndex -> SliceIndex 
---   LeftAllRightSubSlice :: Int -> SliceIndex -> SliceIndex 
---   BothSubSlice :: Int -> SliceIndex -> SliceIndex -> SliceIndex
---   deriving (Show, Eq)
-
--- instance Semigroup SliceIndex where
---   (<>) = unionSliceIndex
-
--- instance Monoid SliceIndex where
---   mempty = BotSlice
-
--- colourToSlice :: ColourIndex -> SliceIndex
--- colourToSlice TopColour       = TopSlice
--- colourToSlice (LeftOf idx)    = LeftAllSlice idx
--- colourToSlice (RightOf idx)   = RightAllSlice idx
--- colourToSlice (LeftSub i sl)  = LeftSubSlice i (colourToSlice sl)
--- colourToSlice (RightSub i sl) = RightSubSlice i (colourToSlice sl)
-
--- validSplit :: (SliceIndex, SliceIndex) -> Bool
--- validSplit (sl, sl') = validSplitNoSym (sl, sl') || validSplitNoSym (sl', sl)
-
--- validSplitNoSym :: (SliceIndex, SliceIndex) -> Bool
--- validSplitNoSym (BotSlice, BotSlice) = True
--- validSplitNoSym (TopSlice, BotSlice) = True -- TODO: Sort of, these should be unit instead of bot.
--- validSplitNoSym (LeftAllSlice i, RightAllSlice j) | i == j = True
--- validSplitNoSym (LeftSubSlice i sl, LeftSubRightAllSlice j sl') | i == j = validSplit (sl, sl')
--- validSplitNoSym (RightSubSlice i sl, LeftAllRightSubSlice j sl') | i == j = validSplit (sl, sl')
--- validSplitNoSym (BothSubSlice i slLL slLR, BothSubSlice j slRL slRR) | i == j = validSplit (slLL, slRL) && validSplit (slLR, slRR)
-
--- unionDisjointSlice :: (SliceIndex, SliceIndex) -> SliceIndex
--- unionDisjointSlice (BotSlice, BotSlice) = BotSlice
--- unionDisjointSlice (TopSlice, BotSlice) = TopSlice
--- unionDisjointSlice (BotSlice, TopSlice) = TopSlice
--- unionDisjointSlice (LeftSubSlice i sl1, LeftSubSlice j sl2) | i == j = LeftSubSlice i (unionDisjointSlice (sl1, sl2))
--- unionDisjointSlice (LeftSubSlice i sl1, LeftSubRightAllSlice j sl2) | i == j = LeftSubRightAllSlice i (unionDisjointSlice (sl1, sl2))
--- unionDisjointSlice (LeftSubSlice i sl1, BothSubSlice j sl2L sl2R) | i == j = LeftSubRightAllSlice i (unionDisjointSlice (sl1, sl2))
--- unionDisjointSlice (RightSubSlice i sl1, RightSubSlice j sl2) | i == j = RightSubSlice i (unionDisjointSlice (sl1, sl2))
--- unionDisjointSlice _ = undefined -- TODO
-
--- sliceSubst :: SliceIndex -> PaletteSubst -> SliceIndex
--- sliceSubst BotSlice _ = BotSlice
--- sliceSubst TopSlice _ = TopSlice
--- sliceSubst (LeftAllSlice i) (PaletteSubst ps) = let (TensorPalSub slL _ _ _) = ps !! i in slL
--- sliceSubst (RightAllSlice i) (PaletteSubst ps) = let (TensorPalSub _ _ slR _) = ps !! i in slR
--- sliceSubst (LeftSubSlice i sl) (PaletteSubst ps) = let (TensorPalSub _ psL _ _) = ps !! i in sliceSubst sl psL
--- sliceSubst (RightSubSlice i sl) (PaletteSubst ps) = let (TensorPalSub _ _ _ psR) = ps !! i in sliceSubst sl psR
--- sliceSubst (LeftSubRightAllSlice i sl) (PaletteSubst ps) = let (TensorPalSub _ psL slR _) = ps !! i in unionDisjointSlice (sliceSubst sl psL, slR)
--- sliceSubst (LeftAllRightSubSlice i sl) (PaletteSubst ps) = let (TensorPalSub slL _ _ psR) = ps !! i in unionDisjointSlice (slL, sliceSubst sl psR)
--- sliceSubst (BothSubSlice i slL slR) (PaletteSubst ps) = let (TensorPalSub _ psL _ psR) = ps !! i in unionDisjointSlice (sliceSubst slL psL, sliceSubst slR psR)
-
--- palElimTensor :: Palette -> ColourIndex -> (Palette, ColourIndex, ColourIndex)
--- palElimTensor = undefined
 
 --------------------------------------------------
 --- Level stuff  
