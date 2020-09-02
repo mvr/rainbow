@@ -30,7 +30,8 @@ data Term where
 
   Id :: Ty -> Term -> Term -> Term
   Refl :: Term 
-  IdElim :: Palette -> [ColourIndex] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
+  -- IdElimSimple :: 
+  -- IdElim :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
   
   Univ :: UnivLevel -> Term  
 
@@ -39,16 +40,13 @@ data Term where
   UndOut :: Term -> Term
 
   Tensor :: Ty -> Ty -> Term
-  TensorPair :: SliceIndex -> Term -> SliceIndex -> Term -> Term
-  TensorElim :: Palette -> [ColourIndex] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
-  -- TensorPair :: Term -> Term -> Term
-  -- TensorElim :: TeleSubst -> Tele -> Term -> Term
+  TensorPair :: SliceIndex -> Term -> SliceIndex -> Term -> Term 
+  TensorElim :: {- target -} Term -> {- motive -} Ty -> {- branch -} Term -> Term
+  TensorElimFrob :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
 
   Hom :: Ty -> Ty -> Term
   HomLam :: Term -> Term
   HomApp :: SliceIndex -> Term -> SliceIndex -> Term -> Term
-  -- HomLam :: Term -> Term
-  -- HomApp :: Term -> Term -> Term
   deriving (Show, Eq)
 
 -- data WZ a = WZ {- regular -} a {- zeroed -} a
@@ -62,11 +60,14 @@ type SemEnv = [Value]
 data Closure where
   Closure :: Term -> SemEnv -> Closure
   deriving (Show, Eq)
+data Closure2 where
+  Closure2 :: Term -> SemEnv -> Closure2
+  deriving (Show, Eq)
 data Closure3 where
   Closure3 :: Term -> SemEnv -> Closure3
   deriving (Show, Eq)
-data ClosureTele where
-  ClosureTele :: Term -> SemEnv -> ClosureTele
+data ClosureT where
+  ClosureT :: Term -> SemEnv -> ClosureT
   deriving (Show, Eq)
 
 type VTy = Value
@@ -104,17 +105,27 @@ data Neutral where
   NFst :: Neutral -> Neutral
   NSnd :: Neutral -> Neutral
   
-  NIdElim :: {- mot -} ClosureTele -> {- branch -} ClosureTele -> {- A -} VTy -> {- a1 -} Value -> {- a2 -} Value -> {- theta -} ([Value], Neutral, [Value]) -> Neutral
+  -- NIdElim :: {- mot -} ClosureT -> {- branch -} ClosureT -> {- theta -} ([Normal], {- A -} VTy, {- a1 -} Value, {- a2 -} Value, Neutral, [Normal]) -> Neutral
   
   NUndOut :: Neutral -> Neutral
 
-  NTensorElim :: {- mot -} ClosureTele -> {- branch -} ClosureTele -> {- theta -} ([Value], Neutral, [Value]) -> Neutral
+  NTensorElim :: {- mot -} Closure -> 
+                 {- branch -} Closure2 -> 
+                 {- aty -} VTy -> 
+                 {- bty -} Closure -> 
+                 {- target -} Neutral -> Neutral
+
+  NTensorElimFrob :: {- mot -} ClosureT -> 
+                 {- branch -} ClosureT -> 
+                 {- tele: before, tensor, after -} ([ClosureT], ClosureT, [ClosureT]) -> 
+                 {- before, tensor |- after tele -}
+                 {- tele sub -} ([Value], Neutral, [Value]) -> Neutral
     
   NHomApp :: Neutral -> Normal -> Neutral 
   deriving (Show, Eq)
 
 data Normal where
-  Normal :: {- type -} VTy -> {- term -} Value -> Normal 
+  Normal :: { nfTy :: VTy, nfTerm :: Value } -> Normal 
   deriving (Show, Eq)
 
 makeVarVal :: VTy -> {- level -} Int -> Value
