@@ -3,8 +3,8 @@ module Syntax where
 
 import Palette
 
-data UnivLevel
-  deriving (Show, Eq)
+type UnivLevel = Int
+  -- deriving (Show, Eq)
 data Tele
   deriving (Show, Eq)
 data TeleSubst where
