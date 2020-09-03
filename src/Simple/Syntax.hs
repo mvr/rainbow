@@ -80,7 +80,7 @@ envEntryRestrict sl (EnvTerm c ty) = EnvTerm (c >>= flip colourRestrict sl) ty
 envEntryRestrict sl (EnvTopLevel ty) = EnvTopLevel ty
 
 envEntryWkCol :: Int -> Palette -> ColourIndex -> EnvEntry -> EnvEntry
-envEntryWkCol amt pal c (EnvTerm (Just c') ty) = EnvTerm (Just $ palWkAt amt pal c c') ty 
+envEntryWkCol amt pal c (EnvTerm (Just c') ty) = EnvTerm (Just $ colWkAt amt pal c c') ty 
 envEntryWkCol amt pal c (EnvTerm Nothing ty) = EnvTerm Nothing ty
 envEntryWkCol amt pal c (EnvTopLevel ty) = EnvTopLevel ty
 
@@ -97,7 +97,7 @@ envRestrict sl (Env { envPal, envVars })
 envExtendTele :: Tele -> Env -> Env
 envExtendTele (Tele telePal teleVars) (Env envPal envVars ) 
   = Env { envPal = palExtend telePal envPal,
-          envVars = fmap (\(c, ty) -> EnvTerm (Just c) ty) teleVars ++ fmap (envEntryWkCol (length teleVars) envPal TopColour) envVars }
+          envVars = fmap (\(c, ty) -> EnvTerm (Just c) ty) teleVars ++ fmap (envEntryWkCol (palSize telePal) envPal TopColour) envVars }
 
 envExtendSingle :: Ty -> Env -> Env
 envExtendSingle ty m@(Env _ vars) = m { envVars = (EnvTerm (Just TopColour) ty) : vars }  
@@ -213,7 +213,7 @@ synth (TensorElim psi omegacols theta idx mot branch) = do
                   _ -> throwError "expected target to be Tensor"
 
   -- This is going to be a lot harder with dependent types...
-  let omegacols' = (fmap (palWkAt 1 psi' zcol) omegabefore) ++ [r, b] ++ (fmap (palWkAt 1 psi' zcol) omegaafter)
+  let omegacols' = (fmap (colWkAt 1 psi' zcol) omegabefore) ++ [r, b] ++ (fmap (colWkAt 1 psi' zcol) omegaafter)
   let tys' = tybefore ++ [aty, bty] ++ tyafter
   let tele = Tele psi' (zip omegacols' tys')
 

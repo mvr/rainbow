@@ -11,6 +11,9 @@ data Palette = Palette [PalettePiece]
 emptyPal :: Palette
 emptyPal = Palette []
 
+palSize :: Palette -> Int
+palSize (Palette ps) = length ps
+
 data SubstPiece where
   TensorPalSub :: SliceIndex -> PaletteSubst -> SliceIndex -> PaletteSubst -> SubstPiece
   -- UnitPalSub :: Unit -> SubstPiece 
@@ -110,18 +113,18 @@ palAddTensor (Palette ps) (RightSub i c) =
       (new, r, b) = palAddTensor pr c
   in (Palette (before ++ [TensorPal pl new] ++ after), RightSub i r, RightSub i b)
 
-palWkAt :: Int -> Palette -> {- Where the new one is-} ColourIndex -> {- The colour to be weakened-} ColourIndex -> ColourIndex
-palWkAt amt (Palette ps) TopColour TopColour = TopColour
-palWkAt amt (Palette ps) TopColour (LeftSub i c) = LeftSub (i+amt) c
-palWkAt amt (Palette ps) TopColour (RightSub i c) = RightSub (i+amt) c
-palWkAt amt (Palette ps) (LeftSub ni nc) (LeftSub i c)
+colWkAt :: Int -> Palette -> {- Where the new one is-} ColourIndex -> {- The colour to be weakened-} ColourIndex -> ColourIndex
+colWkAt amt (Palette ps) TopColour TopColour = TopColour
+colWkAt amt (Palette ps) TopColour (LeftSub i c) = LeftSub (i+amt) c
+colWkAt amt (Palette ps) TopColour (RightSub i c) = RightSub (i+amt) c
+colWkAt amt (Palette ps) (LeftSub ni nc) (LeftSub i c)
   | ni == i = let (TensorPal pl pr) = ps !! i in 
-                LeftSub ni (palWkAt amt pl nc c)
-palWkAt amt (Palette ps) (LeftSub ni nc) c = c
-palWkAt amt (Palette ps) (RightSub ni nc) (RightSub i c)
+                LeftSub ni (colWkAt amt pl nc c)
+colWkAt amt (Palette ps) (LeftSub ni nc) c = c
+colWkAt amt (Palette ps) (RightSub ni nc) (RightSub i c)
   | ni == i = let (TensorPal pl pr) = ps !! i in 
-                RightSub ni (palWkAt amt pr nc c)
-palWkAt amt (Palette ps) (RightSub ni nc) c = c
+                RightSub ni (colWkAt amt pr nc c)
+colWkAt amt (Palette ps) (RightSub ni nc) c = c
 
 colExtHom :: ColourIndex -> ColourIndex
 colExtHom col = LeftSub 0 col

@@ -11,18 +11,41 @@ import Syntax
 type Err = String
 
 data CtxEntry = CtxTerm Value VTy (Maybe ColourIndex)
-              | CtxTopLevel Value Ty
+              | CtxTopLevel Value VTy
   deriving (Show)
-              
+
+-- Newest variable first
 data SemCtx = SemCtx { ctxPal :: Palette, ctxVars :: [CtxEntry] }
+
+data SemTele = SemTele { semTelePal :: Palette, semTeleVars :: [(Value, VTy, (Maybe ColourIndex))] }
+
+ctxLookupVar :: Int -> SemCtx -> (VTy, Maybe ColourIndex)
+ctxLookupVar ix (SemCtx _ vars) = case vars !! ix of
+  CtxTerm _ ty c -> (ty, c)
+  CtxTopLevel _ ty -> (ty, Just TopColour)
 
 ctxEntryWkColHom :: Palette -> CtxEntry -> CtxEntry
 ctxEntryWkColHom pal (CtxTerm t ty (Just c')) = CtxTerm t ty (Just $ colExtHom c')
 ctxEntryWkColHom pal (CtxTerm t ty Nothing) = CtxTerm t ty Nothing
 ctxEntryWkColHom pal (CtxTopLevel t ty) = CtxTopLevel t ty
 
+ctxExtValCol :: Value -> Value -> ColourIndex -> SemCtx -> SemCtx
+ctxExtValCol a aty c (SemCtx pal vars) = SemCtx pal ((CtxTerm a aty (Just c)):vars)
+
 ctxExtVal :: Value -> Value -> SemCtx -> SemCtx
-ctxExtVal a aty (SemCtx pal vars) = SemCtx pal ((CtxTerm a aty (Just TopColour)):vars)
+ctxExtVal a aty  = ctxExtValCol a aty TopColour
+
+
+ctxEntryWkCol :: Int -> Palette -> ColourIndex -> CtxEntry -> CtxEntry
+ctxEntryWkCol = undefined
+-- ctxEntryWkCol amt pal c (CtxTerm (Just c') ty) = CtxTerm (Just $ palWkAt amt pal c c') ty 
+-- ctxEntryWkCol amt pal c (CtxTerm Nothing ty) = CtxTerm Nothing ty
+-- ctxEntryWkCol amt pal c (CtxTopLevel ty) = CtxTopLevel ty
+
+ctxExtTele :: SemTele -> SemCtx -> SemCtx
+ctxExtTele (SemTele psi teleVars) (SemCtx pal vars) = SemCtx (palExtend psi pal) (teleentries ++ wkvars)
+  where teleentries = fmap (\(v, ty, c) -> CtxTerm v ty c) teleVars
+        wkvars = fmap (ctxEntryWkCol (palSize psi) pal TopColour) vars
 
 ctxExtValZero :: Value -> Value -> SemCtx -> SemCtx
 ctxExtValZero a aty (SemCtx pal vars) = SemCtx pal ((CtxTerm a aty Nothing):vars)
@@ -52,6 +75,9 @@ ctxToEnv (SemCtx _ vars)
              CtxTerm t _ _ -> t
              CtxTopLevel t _ -> t) 
     vars
+
+teleToEnv :: SemTele -> SemEnv
+teleToEnv (SemTele _ vars) = fmap (\(t, _, _) -> t) vars
 
 newtype CheckM a = CheckM (ReaderT SemCtx (ExceptT Err Identity) a)
   deriving (Functor, Applicative, Monad, MonadError Err, MonadReader SemCtx)
@@ -137,7 +163,149 @@ check a ty = do
   when (not $ N.eqTy lev ty ty') $ throwError $ "type mismatch, expected: " ++ show ty ++ " got " ++ show ty'
 
 synth :: Term -> CheckM VTy
-synth = undefined
+synth (Var i) = do
+  (ty, c) <- asks (ctxLookupVar i)
+  when (c /= Just TopColour) $ throwError $ "Cannot use variable " ++ show i
+  return ty
+
+synth (ZeroVar i) = do
+  (ty, c) <- asks (ctxLookupVar i)
+  lev <- asks ctxLen
+  return (N.zeroBefore lev ty)
+
+synth (Check a aty) = do
+  semEnv <- asks ctxToEnv
+  let tyval = N.eval semEnv aty 
+  check a tyval
+  return tyval
+
+synth (Fst p) = do
+  ty <- synth p
+  case ty of 
+    (VSg a b) -> return a
+    _ -> throwError "expected Sg type"
+
+synth (Snd p) = do
+  ty <- synth p
+  case ty of 
+    (VSg aty bclo) -> do
+      semEnv <- asks ctxToEnv
+      let aval = N.eval semEnv (Fst p)
+      return $ N.doClosure bclo aval
+    _ -> throwError "expected Sg type"
+
+synth (App f a) = do
+  fty <- synth f
+  case fty of 
+    (VPi aty bclo) -> do 
+      check a aty
+      semEnv <- asks ctxToEnv
+      let aval = N.eval semEnv a
+      return $ N.doClosure bclo aval
+    _ -> throwError "expected Pi type"
+
+synth (HomApp fsl f asl a) = do
+  when (not $ validSplit (fsl, asl)) $ throwError "Invalid split"
+
+  fty <- local (ctxRestrict fsl) $ synth f
+  case fty of 
+    (VHom aty bclo) -> do 
+      local (ctxRestrict asl) $ check a aty
+      semEnv <- asks ctxToEnv
+      let aval = N.eval semEnv a
+      return $ N.doClosure bclo aval
+    _ -> throwError "expected Hom type"
+
+synth (UndOut n) = do
+  nty <- synth n
+  case nty of
+    (VUnd aty) -> return aty
+    _ -> throwError "expected Und type"
+
+
+synth (TensorElim t mot br) = do
+  tty <- synth t
+  
+  (aty, bclo) <- case tty of 
+                  (VTensor aty bclo) -> return (aty, bclo)
+                  _ -> throwError "expected target to be Tensor"
+  
+  lev <- asks ctxLen
+
+  let mott = makeVarVal (VTensor aty bclo) lev
+  local (ctxExtVal mott (VTensor aty bclo)) $ checkTy mot
+
+  let bra = makeVarVal aty lev
+      brbty = N.doClosure bclo bra
+      brb = makeVarVal brbty (lev+1)
+  local (ctxExtVal brb brbty . ctxExtVal bra aty) $ checkTy br
+
+  semEnv <- asks ctxToEnv  
+  return $ N.eval ((N.eval semEnv t) : semEnv) mot 
+
+synth (TensorElimFrob psi omega theta tIdx mot br) = do
+  checkTeleSubst psi omega theta
+
+  mottele <- evalTele psi omega
+  local (ctxExtTele mottele) $ checkTy mot  
+
+  let (_, (_, tty, Just zcol):teletysbefore) = splitAt (length omega - tIdx - 1) (semTeleVars mottele)
+  (aty, bclo) <- case tty of 
+                   (VTensor aty bclo) -> return (aty, bclo)
+                   _ -> throwError "expected target to be Tensor"  
+
+  let (psi', r, b) = palAddTensor psi zcol
+  let (_, _:omegaafter) = splitAt tIdx omega
+  lev <- asks ctxLen
+  let bra = makeVarVal aty (lev + length teletysbefore)
+      brbty = N.doClosure bclo bra
+      brb = makeVarVal brbty (lev + length teletysbefore + 1)
+
+      doWk = fmap (\(t, ty, c) -> (t, ty, fmap (colWkAt 1 psi' zcol) c))
+      doWk2 = fmap (\(c, ty) -> (colWkAt 1 psi' zcol c, ty))
+
+  brteleafter <- local (ctxExtTele (SemTele psi' ((VTensorPair bra brb, VTensor aty bclo, Just $ colWkAt 1 psi' zcol zcol): doWk teletysbefore))) 
+                 $ evalTele emptyPal (doWk2 omegaafter)
+
+  semEnv <- asks ctxToEnv  
+  local (ctxExtTele brteleafter 
+         . ctxExtValCol brb brbty b 
+         . ctxExtValCol bra aty r 
+         . ctxExtTele (SemTele psi' teletysbefore)) 
+    $ check br (N.eval (teleToEnv brteleafter ++ [brb, bra] ++ fmap (\(t,_,_) -> t) teletysbefore ++ semEnv) mot)
+
+  thetaval <- evalSubst psi omega theta
+  
+  return $ N.eval (thetaval ++ semEnv) mot
+
+synth a = throwError $ "cannot synth the type of " ++ show a
+
+checkTeleSubst :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> CheckM ()
+checkTeleSubst psi [] (TeleSubst kappa []) = return () -- TODO: check the palette subst?
+checkTeleSubst psi ((c,ty):cs) (TeleSubst kappa (a:as)) = do
+  semEnv <- asks ctxToEnv  
+  let tyval = N.eval semEnv ty
+  local (ctxRestrict $ sliceSubst (colourToSlice c) kappa) $ check a tyval
+  local (ctxExtValCol (N.eval semEnv a) tyval c) $ checkTeleSubst psi cs (TeleSubst kappa as)
+
+evalTele :: Palette -> [(ColourIndex, Ty)] -> CheckM SemTele
+evalTele pal [] = return $ SemTele pal []
+evalTele pal ((c, ty):cs) = do
+  semEnv <- asks ctxToEnv  
+  lev <- asks ctxLen
+  let tyval = N.eval semEnv ty
+      var = makeVarVal tyval lev
+  (SemTele _ vs) <- local (ctxExtValCol var tyval c) $ evalTele pal cs
+  return (SemTele pal ((var, tyval, Just c):vs))
+
+evalSubst :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> CheckM [Value]
+evalSubst psi [] (TeleSubst kappa []) = return [] -- TODO: check the palette subst?
+evalSubst psi ((c,ty):cs) (TeleSubst kappa (a:as)) = do
+  semEnv <- asks ctxToEnv  
+  let tyval = N.eval semEnv ty
+      aval = (N.eval semEnv a)
+  vs <- local (ctxExtValCol aval tyval c) $ evalSubst psi cs (TeleSubst kappa as)
+  return $ (aval:vs)
 
 checkTy :: Ty -> CheckM ()
 checkTy (Univ i) = return ()
@@ -159,7 +327,6 @@ checkTy (Hom aty bty) = do
   local (ctxRestrict BotSlice) $ checkTy aty
   (atyval, var) <- evalAndVar aty
   local (ctxExtHom var atyval) $ checkTy bty
-
 checkTy a = do 
   ty <- synth a 
   case ty of 
