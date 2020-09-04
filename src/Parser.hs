@@ -39,6 +39,9 @@ ident = (lexeme . try) (p >>= check)
 prodSym :: Parser ()
 prodSym = pure () <* (try (symbol "*") <|> symbol "×")
 
+funSym :: Parser ()
+funSym = pure () <* (try (symbol "->") <|> symbol "→")
+
 tensorSym :: Parser ()
 tensorSym = pure () <* (try (symbol "*o") <|> symbol "⊗")
 
@@ -46,7 +49,7 @@ homSym :: Parser ()
 homSym = pure () <* (try (symbol "-o") <|> symbol "⊸")
 
 slice :: Parser Slice
-slice = try ( symbol "." *> pure (Slice []) )
+slice = try ( symbol "_" *> pure (Slice []) )
   <|> (Slice <$> many (NamedColour <$> ident))
 
 palettePiece :: Parser PalettePiece
@@ -63,7 +66,7 @@ palettePiece = do
   return $ TensorPal r rp b bp
 
 palette :: Parser Palette
-palette = Palette <$> (try (symbol "." *> return []) <|> (palettePiece `sepBy1` (symbol ",")))
+palette = Palette <$> (try (symbol "_" *> return []) <|> (palettePiece `sepBy1` (symbol ",")))
 
 palSubstPiece = do
   symbol "("
@@ -82,7 +85,7 @@ palSubstPiece = do
   return $ TensorPalSub slr r rtheta slb b btheta
 
 palSubst :: Parser PaletteSubst
-palSubst = try (symbol "." *> pure (PaletteSubst []))
+palSubst = try (symbol "_" *> pure (PaletteSubst []))
   <|> PaletteSubst <$>  palSubstPiece `sepBy1` (symbol ",")
 
 -- telesubst :: Parser TeleSubst
@@ -158,7 +161,7 @@ term =
     do 
     symbol "fun" 
     xs <- some ident
-    symbol "->"
+    funSym
     t <- term
     return (Lam xs t)
   )
@@ -167,8 +170,12 @@ term =
       symbol "tensormatch"
       s <- term
       symbol "at"
-      z <- ident
-      symbol "->"
+      z <- try (do
+                   z <- ident
+                   funSym
+                   return (Just z))
+            <|> pure Nothing
+
       mot <- term
       symbol "with"
 
@@ -187,7 +194,7 @@ term =
         <|>
         return (Nothing, Nothing)
 
-      symbol "->"
+      funSym
 
       c <- term      
       
@@ -220,7 +227,7 @@ term =
             v <- ident
             return (v, TopColour)
          
-      symbol "->"
+      funSym
       mot <- term
       symbol "with"
       z <- ident
@@ -242,7 +249,7 @@ term =
         <|>
         return (Nothing, Nothing)
 
-      symbol "->"
+      funSym
 
       c <- term
 
@@ -295,11 +302,11 @@ term =
     )
   <|> try (do
               a <- atomic
-              symbol "->"
+              funSym
               b <- term
               return (Pi [TeleCell Nothing a] b)
               )
-  <|> try (Pi <$> some teleCell <* symbol "->" <*> term)
+  <|> try (Pi <$> some teleCell <* funSym <*> term)
   <|> try (Sg <$> some teleCell <* prodSym <*> term)
   <|> try (do
               a <- atomic

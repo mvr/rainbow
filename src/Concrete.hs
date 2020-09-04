@@ -124,7 +124,7 @@ data Term where
   TensorPair :: Maybe Slice -> Term -> Maybe Slice -> Term -> Term
 
   TensorElim :: Term
-    -> {- motive var -} Ident -> {- motive -} Ty 
+    -> {- motive var -} Maybe Ident -> {- motive -} Ty 
     -> {- new left var and col -} (Ident, Maybe Ident) 
     -> {- new right var and col -} (Ident, Maybe Ident)
     -> {- branch -} Term 

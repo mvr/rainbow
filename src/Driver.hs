@@ -186,7 +186,7 @@ bind pal@(C.Palette cpals) env (C.TensorElim s z mot (x, xc) (y, yc) c) = do
   bounds <- bind pal env s
   boundbr <- bind (C.Palette $ (C.palLoneTensor (xc', yc')):cpals) (bindsExtTele env [(BindTerm (Just x) (C.NamedColour xc')), (BindTerm (Just y) (C.NamedColour yc'))]) c
   
-  boundmot <- bind pal (bindsExt env (Just z)) mot 
+  boundmot <- bind pal (bindsExt env z) mot 
 
   return $ S.TensorElim bounds boundmot boundbr
   
