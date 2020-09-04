@@ -17,6 +17,9 @@ data CtxEntry = CtxTerm Value VTy (Maybe ColourIndex)
 -- Newest variable first
 data SemCtx = SemCtx { ctxPal :: Palette, ctxVars :: [CtxEntry] }
 
+ctxEmpty :: SemCtx
+ctxEmpty = SemCtx emptyPal []
+
 data SemTele = SemTele { semTelePal :: Palette, semTeleVars :: [(Value, VTy, (Maybe ColourIndex))] }
 
 ctxLookupVar :: Int -> SemCtx -> (VTy, Maybe ColourIndex)
@@ -35,6 +38,8 @@ ctxExtValCol a aty c (SemCtx pal vars) = SemCtx pal ((CtxTerm a aty (Just c)):va
 ctxExtVal :: Value -> Value -> SemCtx -> SemCtx
 ctxExtVal a aty  = ctxExtValCol a aty TopColour
 
+ctxExtTop :: Value -> Value -> SemCtx -> SemCtx
+ctxExtTop a aty (SemCtx pal vars) = SemCtx pal ((CtxTopLevel a aty):vars)
 
 ctxEntryWkCol :: Int -> Palette -> ColourIndex -> CtxEntry -> CtxEntry
 ctxEntryWkCol = undefined
@@ -81,6 +86,9 @@ teleToEnv (SemTele _ vars) = fmap (\(t, _, _) -> t) vars
 
 newtype CheckM a = CheckM (ReaderT SemCtx (ExceptT Err Identity) a)
   deriving (Functor, Applicative, Monad, MonadError Err, MonadReader SemCtx)
+
+runCheckM :: SemCtx -> CheckM a -> Either Err a
+runCheckM env (CheckM m) = runIdentity $ runExceptT $ runReaderT m env
 
 evalAndVar :: Ty -> CheckM (VTy, Value)
 evalAndVar aty = do
@@ -340,4 +348,4 @@ checkTy a = do
   ty <- synth a 
   case ty of 
     VUniv l -> return ()
-    t -> throwError "Expected universe"
+    t -> throwError $ "Expected " ++ show a ++ " to synth universe, instead got " ++ show t
