@@ -235,10 +235,18 @@ synth (TensorElim t mot br) = do
   let mott = makeVarVal (VTensor aty bclo) lev
   local (ctxExtVal mott (VTensor aty bclo)) $ checkTy mot
 
+  let psi = Palette []
+  let (psi', r, b) = palAddTensor psi TopColour
   let bra = makeVarVal aty lev
       brbty = N.doClosure bclo bra
       brb = makeVarVal brbty (lev+1)
-  local (ctxExtVal brb brbty . ctxExtVal bra aty) $ checkTy br
+      -- brtele = SemTele psi' [(VTensorPair bra brb, VTensor aty bclo, Just TopColour)]
+
+  semEnv <- asks ctxToEnv
+  
+  let brty = N.eval (VTensorPair bra brb : semEnv) mot
+  local (ctxExtValCol brb brbty b
+         . ctxExtValCol bra aty r) $ check br brty
 
   semEnv <- asks ctxToEnv  
   return $ N.eval ((N.eval semEnv t) : semEnv) mot 
@@ -264,9 +272,10 @@ synth (TensorElimFrob psi omega theta tIdx mot br) = do
       doWk = fmap (\(t, ty, c) -> (t, ty, fmap (colWkAt 1 psi' zcol) c))
       doWk2 = fmap (\(c, ty) -> (colWkAt 1 psi' zcol c, ty))
 
-  brteleafter <- local (ctxExtTele (SemTele psi' ((VTensorPair bra brb, VTensor aty bclo, Just $ colWkAt 1 psi' zcol zcol): doWk teletysbefore))) 
+  brteleafter <- local (ctxExtTele (SemTele psi' ((VTensorPair bra brb, VTensor aty bclo, Just $ colWkAt 1 psi' zcol zcol) : doWk teletysbefore))) 
                  $ evalTele emptyPal (doWk2 omegaafter)
 
+  -- TODO: this can definitely be cleaned up
   semEnv <- asks ctxToEnv  
   local (ctxExtTele brteleafter 
          . ctxExtValCol brb brbty b 
