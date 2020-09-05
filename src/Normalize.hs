@@ -14,6 +14,50 @@ type Err = String
 -- newtype NBEM a = CheckM (ReaderT SemEnv (ExceptT Err Identity) a)
 --   deriving (Functor, Applicative, Monad, MonadError Err, MonadReader SemEnv)
 
+lastLevel :: Value -> Int
+lastLevel (VNeutral ty ne) = lastLevelNE ne
+lastLevel (VPi aty bclo) = lastLevel aty `max` lastLevelClosure bclo
+lastLevel (VSg aty bclo) = lastLevel aty `max` lastLevelClosure bclo
+lastLevel (VTensor aty bclo) = lastLevel aty `max` lastLevelClosure bclo
+lastLevel (VHom aty bclo) = lastLevel aty `max` lastLevelClosure bclo
+lastLevel (VUnd aty) = lastLevel aty
+lastLevel (VUndIn a) = lastLevel a
+lastLevel (VPair a b) = lastLevel a `max` lastLevel b
+lastLevel (VTensorPair a b) = lastLevel a `max` lastLevel b
+lastLevel (VLam aclo) = lastLevelClosure aclo
+lastLevel (VHomLam aclo) = lastLevelClosure aclo
+
+lastLevelNE :: Neutral -> Int
+lastLevelNE (NVar i) = i
+lastLevelNE (NZeroVar i) = i
+lastLevelNE (NApp f a) = lastLevelNE f `max` lastLevelNF a
+lastLevelNE (NFst p) = lastLevelNE p
+lastLevelNE (NSnd p) = lastLevelNE p
+lastLevelNE (NUndOut p) = lastLevelNE p 
+lastLevelNE (NTensorElim mot br aty bclo t)
+  = lastLevelClosure mot
+    `max` lastLevelClosure2 br
+    `max` lastLevel aty
+    `max` lastLevelClosure bclo
+    `max` lastLevelNE t
+lastLevelNE (NTensorElimFrob mot br (beforety, tensorclo, afterty) (before, t, after))
+  = lastLevelClosureT mot
+    `max` lastLevelClosureT br
+    `max` (maximum $ fmap lastLevelClosureT beforety)
+    `max` lastLevelClosureT tensorclo
+    `max` (maximum $ fmap lastLevelClosureT afterty)
+    `max` (maximum $ fmap lastLevel before)
+    `max` lastLevelNE t
+    `max` (maximum $ fmap lastLevel after)
+lastLevelNE (NHomApp f a) = lastLevelNE f `max` lastLevelNF a
+
+lastLevelNF :: Normal -> Int
+lastLevelNF (Normal ty a) = lastLevel a
+
+lastLevelClosure (Closure t env) = maximum (fmap lastLevel env)
+lastLevelClosure2 (Closure2 t env) = maximum (fmap lastLevel env)
+lastLevelClosureT (ClosureT t env) = maximum (fmap lastLevel env)
+
 zeroBefore :: Int -> Value -> Value
 zeroBefore ix (VNeutral ty ne) = VNeutral (zeroBefore ix ty) (zeroBeforeNE ix ne)
 zeroBefore ix (VPi aty bclo) = VPi (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
@@ -153,7 +197,8 @@ fillTeleNormals size = go size []
 
 eval :: SemEnv -> Term -> Value
 eval env (Var i) = envLookup env i
-eval env (ZeroVar i) = zeroBefore (length env) (envLookup env i)
+eval env (ZeroVar i) = let v =  (envLookup env i)
+  in zeroBefore (lastLevel v + 1) v
 
 eval env (Check t _) = eval env t
 
