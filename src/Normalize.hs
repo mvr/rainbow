@@ -300,7 +300,7 @@ eqNE size (NTensorElim mot1 br1 aty1 bclo1 ne1)
       motvar = makeVarVal (VTensor aty1 bclo1) size
   in eqTy size aty1 aty2
      && eqTy (size+1) (doClosure bclo1 avar) (doClosure bclo2 avar)
-     && eqTy (size+1) (doClosure mot1 motvar) (doClosure bclo2 motvar)
+     && eqTy (size+1) (doClosure mot1 motvar) (doClosure mot2 motvar)
      && eqNF (size+2) (doClosure mot1 (VTensorPair avar bvar), doClosure2 br1 avar bvar) (doClosure mot2 (VTensorPair avar bvar), doClosure2 br2 avar bvar)
      && eqNE size ne1 ne2
 -- I have no doubt there are at least 3 mistakes in the following
