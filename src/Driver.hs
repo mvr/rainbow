@@ -102,11 +102,20 @@ bindPalSubstPiece pal env (C.TensorPalSub slL _ psL slR _ psR)
 bindPalSubst :: C.Palette -> Bindings -> C.PaletteSubst -> PaletteSubst
 bindPalSubst pal env (C.PaletteSubst ps) = PaletteSubst $ fmap (bindPalSubstPiece pal env) ps
 
+bindTele :: C.Palette -> Bindings -> C.Palette -> [(C.Ident, C.Colour, C.Ty)] -> State SymCounter [(ColourIndex, S.Ty)]
+bindTele pal env psi [] = return []
+bindTele pal env psi ((n,c,ty):cs) = do
+  boundty <- bind (C.palRestrict (C.palExtend psi pal) (C.Slice [c])) env ty
+  let boundc = fromJust $ bindColour psi c
+
+  rest <- bindTele pal (bindsExt env (Just n)) psi cs
+  
+  return $ (boundc, boundty):rest
+
 bindTeleSubst :: C.Palette -> Bindings -> C.TeleSubst -> State SymCounter S.TeleSubst
 bindTeleSubst pal env (C.TeleSubst kappa as) = do 
   ts <- mapM (bind pal env) as 
   return $ S.TeleSubst (bindPalSubst pal env kappa) ts
-
 
 type SymCounter = Int
 
@@ -146,34 +155,38 @@ bind pal env t@(C.TensorPair slL a slR b) = do
   
   return $ S.TensorPair (fromJust $ bindSlice pal slL') bounda (fromJust $ bindSlice pal slR') boundb
 
--- bind pal env (C.TensorElimFrob psi omega theta z mot (x, xc) (y, yc) c) = do
---   xc' <- case xc of 
---            Just xc -> pure xc
---            Nothing -> genColLike x
---   yc' <- case yc of 
---            Just yc -> pure yc
---            Nothing -> genColLike y
+bind pal env (C.TensorElimFrob psi omega theta z mot (x, xc) (y, yc) br) = do
+  xc' <- case xc of 
+           Just xc -> pure xc
+           Nothing -> genColLike x
+  yc' <- case yc of 
+           Just yc -> pure yc
+           Nothing -> genColLike y
 
---   let zIdx = (fromJust $ findIndex ((== z) . fst) omega)
---       zCol = snd $ fromJust $ find ((==z) . fst) omega
---       (C.Palette cpsis) = C.palAddTensor psi zCol (xc', yc')
---       (C.Palette cpals) = pal
---       (before, _:after) = splitAt zIdx omega
---       omega' = fmap (uncurry BindTerm) before
---                ++ [(BindTerm x (C.NamedColour xc')), (BindTerm y (C.NamedColour yc'))] 
---                  ++ fmap (uncurry BindTerm) after
+  let zIdx = fromJust $ findIndex (\(n,_,_) -> n == z) omega
+      zCol = (\(_,c,_) -> c) $ fromJust $ find (\(n,_,_) -> n == z) omega
+      (before, _:after) = splitAt zIdx omega
+
+  let motomega = fmap (\(n, c, ty) -> BindTerm (Just n) c) omega
+
+  boundmot <- bind (C.palExtend psi pal) (bindsExtTele env motomega) mot
   
---   boundtheta <- bindTeleSubst pal env theta
---   boundc <- bind (C.Palette $ cpsis ++ cpals) (bindsExtTele env omega') c
-  
---   return $ S.TensorElimFrob 
---       (bindPal psi)
---       (fmap (fromJust . bindColour psi . snd) omega) 
---       boundtheta
---       zIdx
---       undefined --(bindTy env mot) 
---       boundc
---   where 
+  let bromega = fmap (\(n, c, ty) -> BindTerm (Just n) c) before
+                ++ [(BindTerm (Just x) (C.NamedColour xc')), (BindTerm (Just y) (C.NamedColour yc'))] 
+                ++ fmap (\(n, c, ty) -> BindTerm (Just n) c) after
+
+  boundtheta <- bindTeleSubst pal env theta
+  boundbr <- bind (C.palExtend (C.palAddTensor psi zCol (xc', yc')) pal) (bindsExtTele env bromega) br
+
+  boundomega <- bindTele pal env psi omega
+
+  return $ S.TensorElimFrob 
+      (bindPal psi)
+      boundomega
+      boundtheta
+      zIdx
+      boundmot
+      boundbr
 
 bind pal@(C.Palette cpals) env (C.TensorElim s z mot (x, xc) (y, yc) c) = do
   xc' <- case xc of 
@@ -236,15 +249,6 @@ processDecl env@(Env binds@(Bindings bindings) checkCtx) (C.Def name cbody cty) 
   let semBody = N.eval semEnv body
 
   return (Env (Bindings ((BindTopLevel name):bindings)) (S.ctxExtTop semBody semTy checkCtx))
-
-    -- let def = bind bindings def in
-    -- let tp = bind bindings tp in
-    -- Check.check_tp ~size ~env:check_env ~term:tp;
-    -- let sem_env = Check.env_to_sem_env check_env in
-    -- let sem_tp = Nbe.eval tp sem_env in
-    -- Check.check ~size ~env:check_env ~term:def ~tp:sem_tp;
-    -- let sem_def = Nbe.eval def sem_env in
-    -- let new_entry = Check.TopLevel {term = sem_def; tp = sem_tp} in
 
 -- processDecl env@(Env binds checkEnv) (C.Dont name cbody cty) = do
 --   let body = evalState (bind (C.Palette []) binds cbody) 0

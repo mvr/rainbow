@@ -213,22 +213,27 @@ term =
       symbol "at" 
       p <- palette
       symbol "|"
-      omega <- flip sepBy (symbol ",") $ do
-        try (do
-                v <- ident
-                symbol "["
-                col <- ident
-                symbol "]"                
-            
-                return (v, NamedColour col)
-            )
-        <|>
-          do
-            v <- ident
-            return (v, TopColour)
+      omega <- some $ do
+        symbol "("
+        v <- ident
+    
+        col <- try (do
+          symbol "["
+          n <- ident
+          symbol "]"
+          return (NamedColour n)
+          ) 
+          <|> return TopColour
+
+        symbol ":"
+
+        ty <- term
+        symbol ")"
+        return (v, col, ty)
          
       funSym
       mot <- term
+
       symbol "with"
       z <- ident
       symbol "="

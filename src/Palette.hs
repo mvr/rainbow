@@ -126,6 +126,11 @@ colWkAt amt (Palette ps) (RightSub ni nc) (RightSub i c)
                 RightSub ni (colWkAt amt pr nc c)
 colWkAt amt (Palette ps) (RightSub ni nc) c = c
 
+sliceWkTop :: Int  -> {- The slice to be weakened -} SliceIndex -> SliceIndex
+sliceWkTop amt TopSlice = TopSlice
+sliceWkTop amt BotSlice = BotSlice
+sliceWkTop amt (SubSlice i l r) = SubSlice (i + amt) l r
+
 colExtHom :: ColourIndex -> ColourIndex
 colExtHom col = LeftSub 0 col
 

@@ -12,15 +12,17 @@ type Err = String
 
 data CtxEntry = CtxTerm Value VTy (Maybe ColourIndex)
               | CtxTopLevel Value VTy
-  deriving (Show)
+  deriving (Eq, Show)
 
 -- Newest variable first
 data SemCtx = SemCtx { ctxPal :: Palette, ctxVars :: [CtxEntry] }
+  deriving (Eq, Show)
 
 ctxEmpty :: SemCtx
 ctxEmpty = SemCtx emptyPal []
 
 data SemTele = SemTele { semTelePal :: Palette, semTeleVars :: [(Value, VTy, (Maybe ColourIndex))] }
+  deriving (Eq, Show)
 
 ctxLookupVar :: Int -> SemCtx -> (VTy, Maybe ColourIndex)
 ctxLookupVar ix (SemCtx _ vars) = case vars !! ix of
@@ -42,10 +44,9 @@ ctxExtTop :: Value -> Value -> SemCtx -> SemCtx
 ctxExtTop a aty (SemCtx pal vars) = SemCtx pal ((CtxTopLevel a aty):vars)
 
 ctxEntryWkCol :: Int -> Palette -> ColourIndex -> CtxEntry -> CtxEntry
-ctxEntryWkCol = undefined
--- ctxEntryWkCol amt pal c (CtxTerm (Just c') ty) = CtxTerm (Just $ palWkAt amt pal c c') ty 
--- ctxEntryWkCol amt pal c (CtxTerm Nothing ty) = CtxTerm Nothing ty
--- ctxEntryWkCol amt pal c (CtxTopLevel ty) = CtxTopLevel ty
+ctxEntryWkCol amt pal c (CtxTerm v ty (Just c')) = CtxTerm v ty (Just $ colWkAt amt pal c c')
+ctxEntryWkCol amt pal c (CtxTerm v ty Nothing) = CtxTerm v ty Nothing
+ctxEntryWkCol amt pal c (CtxTopLevel v ty) = CtxTopLevel v ty
 
 ctxExtTele :: SemTele -> SemCtx -> SemCtx
 ctxExtTele (SemTele psi teleVars) (SemCtx pal vars) = SemCtx (palExtend psi pal) (teleentries ++ wkvars)
@@ -248,19 +249,17 @@ synth (TensorElim t mot br) = do
   let bra = makeVarVal aty lev
       brbty = N.doClosure bclo bra
       brb = makeVarVal brbty (lev+1)
-      -- brtele = SemTele psi' [(VTensorPair bra brb, VTensor aty bclo, Just TopColour)]
+      brtele = SemTele psi' [(brb, brbty, Just b), (bra, aty, Just r)]
 
   semEnv <- asks ctxToEnv
-  
-  let brty = N.eval (VTensorPair bra brb : semEnv) mot
-  local (ctxExtValCol brb brbty b
-         . ctxExtValCol bra aty r) $ check br brty
 
-  semEnv <- asks ctxToEnv  
+  local (ctxExtTele brtele) $ check br (N.eval (VTensorPair bra brb : semEnv) mot)
+
   return $ N.eval ((N.eval semEnv t) : semEnv) mot 
 
 synth (TensorElimFrob psi omega theta tIdx mot br) = do
   checkTeleSubst psi omega theta
+  local (ctxExtTele (SemTele psi [])) $ checkTeleSubst psi omega theta
 
   mottele <- evalTele psi omega
   local (ctxExtTele mottele) $ checkTy mot  
@@ -280,16 +279,15 @@ synth (TensorElimFrob psi omega theta tIdx mot br) = do
       doWk = fmap (\(t, ty, c) -> (t, ty, fmap (colWkAt 1 psi' zcol) c))
       doWk2 = fmap (\(c, ty) -> (colWkAt 1 psi' zcol c, ty))
 
-  brteleafter <- local (ctxExtTele (SemTele psi' ((VTensorPair bra brb, VTensor aty bclo, Just $ colWkAt 1 psi' zcol zcol) : doWk teletysbefore))) 
-                 $ evalTele emptyPal (doWk2 omegaafter)
+  let telebeforeandtensor = SemTele psi' ((VTensorPair bra brb, VTensor aty bclo, Just $ colWkAt 1 psi' zcol zcol) : doWk teletysbefore)
 
-  -- TODO: this can definitely be cleaned up
+  teleafter <- local (ctxExtTele telebeforeandtensor) $ evalTele emptyPal (doWk2 omegaafter)
+
+  let telesplit = SemTele psi' (semTeleVars teleafter ++ [(brb, brbty, Just b), (bra, aty, Just r)] ++ teletysbefore)
+      subunsplit = teleToEnv teleafter ++ teleToEnv telebeforeandtensor
+      
   semEnv <- asks ctxToEnv  
-  local (ctxExtTele brteleafter 
-         . ctxExtValCol brb brbty b 
-         . ctxExtValCol bra aty r 
-         . ctxExtTele (SemTele psi' teletysbefore)) 
-    $ check br (N.eval (teleToEnv brteleafter ++ [brb, bra] ++ fmap (\(t,_,_) -> t) teletysbefore ++ semEnv) mot)
+  local (ctxExtTele telesplit) $ check br (N.eval (subunsplit ++ semEnv) mot)
 
   thetaval <- evalSubst psi omega theta
   
@@ -298,12 +296,13 @@ synth (TensorElimFrob psi omega theta tIdx mot br) = do
 synth a = throwError $ "cannot synth the type of " ++ show a
 
 checkTeleSubst :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> CheckM ()
-checkTeleSubst psi [] (TeleSubst kappa []) = return () -- TODO: check the palette subst?
-checkTeleSubst psi ((c,ty):cs) (TeleSubst kappa (a:as)) = do
-  semEnv <- asks ctxToEnv  
-  let tyval = N.eval semEnv ty
-  local (ctxRestrict $ sliceSubst (colourToSlice c) kappa) $ check a tyval
-  local (ctxExtValCol (N.eval semEnv a) tyval c) $ checkTeleSubst psi cs (TeleSubst kappa as)
+checkTeleSubst psi cs (TeleSubst kappa as) = go cs as []
+  where go [] [] teleenv = return ()
+        go ((c,ty):cs) (a:as) teleenv = do
+          semEnv <- asks ctxToEnv  
+          let tyval = N.eval (teleenv ++ semEnv) ty
+          local (ctxRestrict (sliceWkTop (palSize psi) $ sliceSubst (colourToSlice c) kappa)) $ check a tyval
+          go cs as (N.eval semEnv a : teleenv)
 
 evalTele :: Palette -> [(ColourIndex, Ty)] -> CheckM SemTele
 evalTele pal [] = return $ SemTele pal []
@@ -313,7 +312,7 @@ evalTele pal ((c, ty):cs) = do
   let tyval = N.eval semEnv ty
       var = makeVarVal tyval lev
   (SemTele _ vs) <- local (ctxExtValCol var tyval c) $ evalTele pal cs
-  return (SemTele pal ((var, tyval, Just c):vs))
+  return (SemTele pal (vs ++ [(var, tyval, Just c)]))
 
 evalSubst :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> CheckM [Value]
 evalSubst psi [] (TeleSubst kappa []) = return [] -- TODO: check the palette subst?

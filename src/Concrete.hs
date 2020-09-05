@@ -16,6 +16,9 @@ data Palette = Palette [PalettePiece]
 emptyPal :: Palette
 emptyPal = Palette []
 
+palExtend :: Palette -> Palette -> Palette
+palExtend (Palette p1) (Palette p2) = Palette (p1 ++ p2)
+
 palLoneTensor :: (Ident, Ident) -> PalettePiece
 palLoneTensor (r, b) = TensorPal (Just r) emptyPal (Just b) emptyPal
 
@@ -131,7 +134,7 @@ data Term where
     -> Term
 
   TensorElimFrob :: Palette 
-    -> {- Var names and their colours variables -} [(Ident, Colour)] 
+    -> {- Var names and their colours variables -} [(Ident, Colour, Ty)] 
     -> TeleSubst 
     -> {- which var in tele -} Ident 
     -> {- motive -} Ty 
