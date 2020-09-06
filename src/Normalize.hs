@@ -63,12 +63,12 @@ zeroBefore ix (VNeutral ty ne) = VNeutral (zeroBefore ix ty) (zeroBeforeNE ix ne
 zeroBefore ix (VPi aty bclo) = VPi (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
 zeroBefore ix (VLam a) = VLam (zeroBeforeClosure ix a)
 zeroBefore ix (VSg aty bclo) = VSg (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
-zeroBefore ix (VPair a b) = VPair (zeroBefore ix a) (zeroBefore ix a)
+zeroBefore ix (VPair a b) = VPair (zeroBefore ix a) (zeroBefore ix b)
 zeroBefore ix (VUniv l) = VUniv l
 zeroBefore ix (VUnd ty) = VUnd (zeroBefore ix ty)
 zeroBefore ix (VUndIn a) = VUndIn (zeroBefore ix a)
 zeroBefore ix (VTensor aty bclo) = VTensor (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
-zeroBefore ix (VTensorPair a b) = VTensorPair (zeroBefore ix a) (zeroBefore ix a)
+zeroBefore ix (VTensorPair a b) = VTensorPair (zeroBefore ix a) (zeroBefore ix b)
 zeroBefore ix (VHom aty bclo) = VHom (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
 zeroBefore ix (VHomLam a) = VHomLam (zeroBeforeClosure ix a)
 
