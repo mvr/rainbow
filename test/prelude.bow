@@ -27,7 +27,3 @@ let assocdep : (A : U<0>) (B : _A -> U<0>) (C : (x : _A) -> ((_B _x) -> U<0>))
                 at (pc' ⊗ zc')       | (p'[pc'] : (x : _A) ⊗ _B _x) (z'[zc'] : (tensormatch _p' at U<0> with <<x, y>> -> _C _x _y)) 
                 -> ((x : _A) ⊗ ((y : _B _x) ⊗ (_C _x _y))) with
        p' = <<x , y>> -> <<x, <<y, z'>> >>  
-
--- The problem is when checking that p has the right type in the
--- second tensormatch. Zeroing is broken right now, the length of
--- `env` is getting out of sync with the number of vars
