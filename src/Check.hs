@@ -180,7 +180,7 @@ synth (Var i) = do
 synth (ZeroVar i) = do
   (ty, c) <- asks (ctxLookupVar i)
   lev <- asks ctxLen
-  return (N.zeroBefore lev ty)
+  return (N.zero ty)
 
 synth (Check a aty) = do
   semEnv <- asks ctxToEnv

@@ -14,97 +14,52 @@ type Err = String
 -- newtype NBEM a = CheckM (ReaderT SemEnv (ExceptT Err Identity) a)
 --   deriving (Functor, Applicative, Monad, MonadError Err, MonadReader SemEnv)
 
-lastLevel :: Value -> Int
-lastLevel (VNeutral ty ne) = lastLevelNE ne
-lastLevel (VPi aty bclo) = lastLevel aty `max` lastLevelClosure bclo
-lastLevel (VSg aty bclo) = lastLevel aty `max` lastLevelClosure bclo
-lastLevel (VTensor aty bclo) = lastLevel aty `max` lastLevelClosure bclo
-lastLevel (VHom aty bclo) = lastLevel aty `max` lastLevelClosure bclo
-lastLevel (VUnd aty) = lastLevel aty
-lastLevel (VUndIn a) = lastLevel a
-lastLevel (VPair a b) = lastLevel a `max` lastLevel b
-lastLevel (VTensorPair a b) = lastLevel a `max` lastLevel b
-lastLevel (VLam aclo) = lastLevelClosure aclo
-lastLevel (VHomLam aclo) = lastLevelClosure aclo
+zero :: Value -> Value
+zero (VNeutral ty ne) = VNeutral (zero ty) (zeroNE ne)
+zero (VPi aty bclo) = VPi (zero aty) (zeroClosure bclo)
+zero (VLam a) = VLam (zeroClosure a)
+zero (VSg aty bclo) = VSg (zero aty) (zeroClosure bclo)
+zero (VPair a b) = VPair (zero a) (zero b)
+zero (VUniv l) = VUniv l
+zero (VUnd ty) = VUnd (zero ty)
+zero (VUndIn a) = VUndIn (zero a)
+zero (VTensor aty bclo) = VTensor (zero aty) (zeroClosure bclo)
+zero (VTensorPair a b) = VTensorPair (zero a) (zero b)
+zero (VHom aty bclo) = VHom (zero aty) (zeroClosure bclo)
+zero (VHomLam a) = VHomLam (zeroClosure a)
 
-lastLevelNE :: Neutral -> Int
-lastLevelNE (NVar i) = i
-lastLevelNE (NZeroVar i) = i
-lastLevelNE (NApp f a) = lastLevelNE f `max` lastLevelNF a
-lastLevelNE (NFst p) = lastLevelNE p
-lastLevelNE (NSnd p) = lastLevelNE p
-lastLevelNE (NUndOut p) = lastLevelNE p 
-lastLevelNE (NTensorElim mot br aty bclo t)
-  = lastLevelClosure mot
-    `max` lastLevelClosure2 br
-    `max` lastLevel aty
-    `max` lastLevelClosure bclo
-    `max` lastLevelNE t
-lastLevelNE (NTensorElimFrob mot br (beforety, tensorclo, afterty) (before, t, after))
-  = lastLevelClosureT mot
-    `max` lastLevelClosureT br
-    `max` (maximum $ fmap lastLevelClosureT beforety)
-    `max` lastLevelClosureT tensorclo
-    `max` (maximum $ fmap lastLevelClosureT afterty)
-    `max` (maximum $ fmap lastLevel before)
-    `max` lastLevelNE t
-    `max` (maximum $ fmap lastLevel after)
-lastLevelNE (NHomApp f a) = lastLevelNE f `max` lastLevelNF a
+zeroClosure (Closure t env) = Closure t (fmap (zero) env)
+zeroClosure2 (Closure2 t env) = Closure2 t (fmap (zero) env)
+zeroClosureT (ClosureT t env) = ClosureT t (fmap (zero) env)
 
-lastLevelNF :: Normal -> Int
-lastLevelNF (Normal ty a) = lastLevel a
-
-lastLevelClosure (Closure t env) = maximum (fmap lastLevel env)
-lastLevelClosure2 (Closure2 t env) = maximum (fmap lastLevel env)
-lastLevelClosureT (ClosureT t env) = maximum (fmap lastLevel env)
-
-zeroBefore :: Int -> Value -> Value
-zeroBefore ix (VNeutral ty ne) = VNeutral (zeroBefore ix ty) (zeroBeforeNE ix ne)
-zeroBefore ix (VPi aty bclo) = VPi (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
-zeroBefore ix (VLam a) = VLam (zeroBeforeClosure ix a)
-zeroBefore ix (VSg aty bclo) = VSg (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
-zeroBefore ix (VPair a b) = VPair (zeroBefore ix a) (zeroBefore ix b)
-zeroBefore ix (VUniv l) = VUniv l
-zeroBefore ix (VUnd ty) = VUnd (zeroBefore ix ty)
-zeroBefore ix (VUndIn a) = VUndIn (zeroBefore ix a)
-zeroBefore ix (VTensor aty bclo) = VTensor (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
-zeroBefore ix (VTensorPair a b) = VTensorPair (zeroBefore ix a) (zeroBefore ix b)
-zeroBefore ix (VHom aty bclo) = VHom (zeroBefore ix aty) (zeroBeforeClosure ix bclo)
-zeroBefore ix (VHomLam a) = VHomLam (zeroBeforeClosure ix a)
-
-zeroBeforeClosure ix (Closure t env) = Closure t (fmap (zeroBefore ix) env)
-zeroBeforeClosure2 ix (Closure2 t env) = Closure2 t (fmap (zeroBefore ix) env)
-zeroBeforeClosureT ix (ClosureT t env) = ClosureT t (fmap (zeroBefore ix) env)
-
-zeroBeforeNE :: Int -> Neutral -> Neutral
-zeroBeforeNE ix (NVar i) | i < ix = NZeroVar i
-zeroBeforeNE ix (NVar i) | otherwise = NVar i
-zeroBeforeNE ix (NZeroVar i) = NZeroVar i
-zeroBeforeNE ix (NApp f a) = NApp (zeroBeforeNE ix f) (zeroBeforeNF ix a)
-zeroBeforeNE ix (NFst p) = NFst (zeroBeforeNE ix p)
-zeroBeforeNE ix (NSnd p) = NSnd (zeroBeforeNE ix p)
-zeroBeforeNE ix (NUndOut p) = NUndOut (zeroBeforeNE ix p)  
-zeroBeforeNE ix (NTensorElim mot br aty bclo t)
+zeroNE :: Neutral -> Neutral
+zeroNE (NVar i) = NZeroVar i
+zeroNE (NZeroVar i) = NZeroVar i
+zeroNE (NApp f a) = NApp (zeroNE f) (zeroNF a)
+zeroNE (NFst p) = NFst (zeroNE p)
+zeroNE (NSnd p) = NSnd (zeroNE p)
+zeroNE (NUndOut p) = NUndOut (zeroNE p)  
+zeroNE (NTensorElim mot br aty bclo t)
   = NTensorElim     
-    (zeroBeforeClosure ix mot) 
-    (zeroBeforeClosure2 ix br)
-    (zeroBefore ix aty)
-    (zeroBeforeClosure ix bclo) 
-    (zeroBeforeNE ix t)
-zeroBeforeNE ix (NTensorElimFrob mot br (beforety, tensorclo, afterty) (before, t, after))
+    (zeroClosure mot) 
+    (zeroClosure2 br)
+    (zero aty)
+    (zeroClosure bclo) 
+    (zeroNE t)
+zeroNE (NTensorElimFrob mot br (beforety, tensorclo, afterty) (before, t, after))
   = NTensorElimFrob 
-    (zeroBeforeClosureT ix mot) 
-    (zeroBeforeClosureT ix br)
-    (fmap (zeroBeforeClosureT ix) beforety,
-     zeroBeforeClosureT ix tensorclo,
-     fmap (zeroBeforeClosureT ix) afterty)
-    (fmap (zeroBefore ix) before, 
-     zeroBeforeNE ix t,
-     fmap (zeroBefore ix) after)
-zeroBeforeNE ix (NHomApp f a) = NHomApp (zeroBeforeNE ix f) (zeroBeforeNF ix a)
+    (zeroClosureT mot) 
+    (zeroClosureT br)
+    (fmap (zeroClosureT) beforety,
+     zeroClosureT tensorclo,
+     fmap (zeroClosureT) afterty)
+    (fmap (zero) before, 
+     zeroNE t,
+     fmap (zero) after)
+zeroNE (NHomApp f a) = NHomApp (zeroNE f) (zeroNF a)
 
-zeroBeforeNF :: Int -> Normal -> Normal
-zeroBeforeNF ix (Normal ty a) = Normal (zeroBefore ix ty) (zeroBefore ix a)
+zeroNF :: Normal -> Normal
+zeroNF (Normal ty a) = Normal (zero ty) (zero a)
 
 envLookup :: SemEnv -> Int -> Value
 envLookup env i = env !! i
@@ -197,8 +152,7 @@ fillTeleNormals size = go size []
 
 eval :: SemEnv -> Term -> Value
 eval env (Var i) = envLookup env i
-eval env (ZeroVar i) = let v =  (envLookup env i)
-  in zeroBefore (lastLevel v + 1) v
+eval env (ZeroVar i) = zero (envLookup env i)
 
 eval env (Check t _) = eval env t
 
@@ -272,7 +226,7 @@ eqNF size (VSg aty1 bclo1, p1) (VSg aty2 bclo2, p2) =
   in eqNF size (aty1, a1) (aty2, a2) &&
      eqNF size (bty1, b1) (bty2, b2)
 eqNF size (VUnd ty1, a1) (VUnd ty2, a2) = 
-  eqNF size (ty1, doUndOut (zeroBefore size a1)) (ty2, doUndOut (zeroBefore size a2))
+  eqNF size (ty1, doUndOut (zero a1)) (ty2, doUndOut (zero a2))
 eqNF size (VTensor aty1 bclo1, VTensorPair a1 b1) (VTensor aty2 bclo2, VTensorPair a2 b2) = 
   let bty1 = doClosure bclo1 a1
       bty2 = doClosure bclo2 a2
