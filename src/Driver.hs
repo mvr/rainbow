@@ -1,5 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
-module Driver where
+module Driver (emptyEnv, processDecl) where
 
 import Debug.Trace
 
@@ -234,6 +234,7 @@ processDecl env@(Env binds@(Bindings bindings) checkCtx) (C.Def name cbody cty) 
   let body = evalState (bind (C.Palette []) binds cbody) 0
   let ty = evalState (bind (C.Palette []) binds cty) 0
 
+--  traceShow body $ return ()
   
   case S.runCheckM checkCtx $ S.checkTy ty of   
     Left err -> putStrLn $ "Error in type of " ++ name ++ ": " ++ err

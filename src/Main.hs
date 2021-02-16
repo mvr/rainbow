@@ -16,7 +16,7 @@ checkFile fn = do
     Left err -> error $ "Parse error: " ++ errorBundlePretty err
     Right decls -> return decls
 
-  putStrLn $ show decls
+  -- putStrLn $ show decls
 
   foldM processDecl D.emptyEnv decls
 

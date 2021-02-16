@@ -13,15 +13,31 @@ data TeleSubst where
 
 type Ty = Term
 
-data Term where 
+data Pat where
+  OnePat :: Pat
+  UnitPat :: Pat
+  VarPat :: Ty -> Pat
+  PairPat :: Pat -> Pat -> Pat
+  TensorPat :: Pat -> Pat -> Pat
+  -- IdPat :: Pat -> Pat -> Pat
+  deriving (Show, Eq)
+
+data Term where
   Check :: Term -> Ty -> Term
 
   Var :: Int -> Term -- DeBruijn indices for variables
-  ZeroVar :: Int -> Term 
+  ZeroVar :: Int -> Term
 
   Pi :: Ty -> Ty -> Term
   Lam :: Term -> Term
   App :: Term -> Term -> Term
+
+  Match :: {- target -} Term ->
+           -- {- type   -} Ty ->
+           {- motive -} Ty ->
+                        Pat ->
+           {- branch -} Term ->
+                        Term
 
   Sg :: Ty -> Ty -> Term
   Pair :: Term -> Term -> Term
@@ -29,54 +45,85 @@ data Term where
   Snd :: Term -> Term
 
   Id :: Ty -> Term -> Term -> Term
-  Refl :: Term 
-  -- IdElimSimple :: 
+  Refl :: Term
+  -- IdElimSimple ::
   -- IdElim :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
-  
-  Univ :: UnivLevel -> Term  
+
+  Univ :: UnivLevel -> Term
 
   Und :: Ty -> Term
   UndIn :: Term -> Term
   UndOut :: Term -> Term
 
   Tensor :: Ty -> Ty -> Term
-  TensorPair :: SliceIndex -> Term -> SliceIndex -> Term -> Term 
-  TensorElim :: {- target -} Term -> {- motive -} Ty -> {- branch -} Term -> Term
-  TensorElimFrob :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
+  TensorPair :: SliceIx -> Term -> SliceIx -> Term -> Term
+  -- TensorElim :: {- target -} Term -> {- motive -} Ty -> {- branch -} Term -> Term
+  -- TensorElimFrob :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
 
   Hom :: Ty -> Ty -> Term
-  HomLam :: Term -> Term
-  HomApp :: SliceIndex -> Term -> SliceIndex -> Term -> Term
+  HomLam :: Pat -> Term -> Term
+  HomApp :: SliceIx -> Term -> SliceIx -> Term -> Term
   deriving (Show, Eq)
 
--- data WZ a = WZ {- regular -} a {- zeroed -} a
---   deriving (Show, Eq, Functor)
--- instance Applicative WZ where
---   pure a = WZ a a
---   (WZ f g) <*> (WZ a b) = WZ (f a) (g b)
+data SemEnv = SemEnv SemPal [Value]
+  deriving (Eq)
 
-type SemEnv = [Value]
+semEnvLength :: SemEnv -> Int
+semEnvLength (SemEnv _ env) = length env
+
+semEnvComma :: SemEnv -> SemEnv -> SemEnv
+semEnvComma (SemEnv pal env) (SemEnv pal' env') = (SemEnv (cleverCommaSemPal pal pal') (env' ++ env))
+
+semEnvTensor :: SemEnv -> SemEnv -> SemEnv
+semEnvTensor (SemEnv pal env) (SemEnv pal' env') = (SemEnv (TensorSemPal pal pal') (env' ++ env))
 
 data Closure where
   Closure :: Term -> SemEnv -> Closure
-  deriving (Show, Eq)
+  deriving (Eq)
 data Closure2 where
   Closure2 :: Term -> SemEnv -> Closure2
-  deriving (Show, Eq)
+  deriving (Eq)
 data Closure3 where
   Closure3 :: Term -> SemEnv -> Closure3
-  deriving (Show, Eq)
+  deriving (Eq)
 data ClosureT where
   ClosureT :: Term -> SemEnv -> ClosureT
-  deriving (Show, Eq)
+  deriving (Eq)
+data ClosurePat where
+  ClosurePat :: Term -> SemEnv -> ClosurePat
+  deriving (Eq)
+
+instance Show Closure where show (Closure term _) = "(Closure (" ++ show term ++ ") [...])"
+instance Show Closure2 where show (Closure2 term _) = "(Closure2 (" ++ show term ++ ") [...])"
+instance Show Closure3 where show (Closure3 term _) = "(Closure3 (" ++ show term ++ ") [...])"
+instance Show ClosureT where show (ClosureT term _) = "(ClosureT (" ++ show term ++ ") [...])"
+instance Show ClosurePat where show (ClosurePat term _) = "(ClosurePat (" ++ show term ++ ") [...])"
+
+-- This is a closure containing a pattern
+data PatClosure where
+  PatClosure :: Pat -> SemEnv -> PatClosure
+  deriving (Eq)
+instance Show PatClosure where show (PatClosure pat _) = "(PatClosure (" ++ show pat ++ ") [...])"
 
 type VTy = Value
+
+data VPat where
+  OneVPat :: VPat
+  UnitVPat :: VPat
+  VarVPat :: VTy -> VPat
+  PairVPat :: VPat -> PatClosure -> VPat
+  TensorVPat :: VPat -> PatClosure -> VPat
+  -- IdVPat :: VPat -> VPat -> VPat
+  deriving (Show, Eq)
 
 data Value where
   VNeutral :: {- type -} VTy -> Neutral -> Value
 
   VPi :: VTy -> Closure -> Value
   VLam :: Closure -> Value
+
+  VOne :: Value
+  VOneIn :: Value
 
   VSg :: VTy -> Closure -> Value
   VPair :: Value -> Value -> Value
@@ -89,11 +136,29 @@ data Value where
   VUnd :: VTy -> Value
   VUndIn :: Value -> Value
 
+  VUnit :: Value
+  VUnitIn :: UnitLvl -> Value
+
   VTensor :: VTy -> Closure -> Value
-  VTensorPair :: Value -> Value -> Value
+  VTensorPair :: SliceLvl -> Value -> SliceLvl -> Value -> Value
 
   VHom :: VTy -> Closure -> Value
   VHomLam :: Closure -> Value
+  deriving (Show, Eq)
+
+-- data Spine where
+--   SNil :: Spine
+
+--   SFst :: Spine -> Spine
+--   SSnd :: Spine -> Spine
+
+--   SApp :: Spine -> Normal -> Spine
+--   SHomApp :: Spine -> Normal -> Spine
+
+data StuckArg where
+  SPair :: StuckArg -> StuckArg -> StuckArg
+  STensor :: StuckArg -> StuckArg -> StuckArg
+  SNormal :: Normal -> StuckArg
   deriving (Show, Eq)
 
 data Neutral where
@@ -101,74 +166,39 @@ data Neutral where
   NZeroVar :: Int -> Neutral
 
   NApp :: Neutral -> Normal -> Neutral
+  NMatch :: {- target -} Normal ->
+            {- motive -} Closure ->
+                         VPat ->
+            {- branch -} ClosurePat ->
+                         Neutral
+
+  -- NStuckArg :: Pat -> ClosurePat -> Value -> Neutral -- Stuck on an _argument_ that doesn't match the pattern
 
   NFst :: Neutral -> Neutral
   NSnd :: Neutral -> Neutral
-  
+
   -- NIdElim :: {- mot -} ClosureT -> {- branch -} ClosureT -> {- theta -} ([Normal], {- A -} VTy, {- a1 -} Value, {- a2 -} Value, Neutral, [Normal]) -> Neutral
-  
+
   NUndOut :: Neutral -> Neutral
 
-  NTensorElim :: {- mot -} Closure -> 
-                 {- branch -} Closure2 -> 
-                 {- aty -} VTy -> 
-                 {- bty -} Closure -> 
-                 {- target -} Neutral -> Neutral
+  -- NTensorElim :: {- mot -} Closure ->
+  --                {- branch -} Closure2 ->
+  --                {- aty -} VTy ->
+  --                {- bty -} Closure ->
+  --                {- target -} Neutral -> Neutral
 
-  NTensorElimFrob :: {- mot -} ClosureT -> 
-                 {- branch -} ClosureT -> 
-                 {- tele: before, tensor, after -} ([ClosureT], ClosureT, [ClosureT]) -> 
-                 {- before, tensor |- after tele -}
-                 {- tele sub -} ([Value], Neutral, [Value]) -> Neutral
-    
-  NHomApp :: Neutral -> Normal -> Neutral 
+  -- NTensorElimFrob :: {- mot -} ClosureT ->
+  --                {- branch -} ClosureT ->
+  --                {- tele: before, tensor, after -} ([ClosureT], ClosureT, [ClosureT]) ->
+  --                {- before, tensor |- after tele -}
+  --                {- tele sub -} ([Value], Neutral, [Value]) -> Neutral
+
+  NHomApp :: Neutral -> Normal -> Neutral
   deriving (Show, Eq)
 
 data Normal where
-  Normal :: { nfTy :: VTy, nfTerm :: Value } -> Normal 
-  deriving (Show, Eq)
+  Normal :: { nfTy :: VTy, nfTerm :: Value } -> Normal
+--  deriving (Show, Eq)
+  deriving (Eq)
 
-makeVarVal :: VTy -> {- level -} Int -> Value
-makeVarVal ty lev = VNeutral ty (NVar lev)
-
--- Term with all colour information gone
-
-data MonoTeleSubst where
-  MonoTeleSubst :: [MonoTerm] -> MonoTeleSubst
-  deriving (Show, Eq)
-
-type MonoTy = MonoTerm
-
-data MonoTerm where 
-  MonoCheck :: MonoTerm -> MonoTy -> MonoTerm
-
-  MonoVar :: Int -> MonoTerm
-  MonoZeroVar :: Int -> MonoTerm 
-
-  MonoPi :: MonoTy -> MonoTy -> MonoTerm
-  MonoLam :: MonoTerm -> MonoTerm
-  MonoApp :: MonoTerm -> MonoTerm -> MonoTerm
-
-  MonoSg :: MonoTy -> MonoTy -> MonoTerm
-  MonoPair :: MonoTerm -> MonoTerm -> MonoTerm
-  MonoFst :: MonoTerm -> MonoTerm
-  MonoSnd :: MonoTerm -> MonoTerm
-
-  MonoId :: MonoTy -> MonoTerm -> MonoTerm -> MonoTerm
-  MonoRefl :: MonoTerm 
-  MonoIdElim :: TeleSubst -> {- which var in tele -} Int -> {- motive -} MonoTy -> {- branch -} MonoTerm -> MonoTerm
-  
-  MonoUniv :: UnivLevel -> MonoTerm  
-
-  MonoUnd :: MonoTy -> MonoTerm
-  MonoUndIn :: MonoTerm -> MonoTerm
-  MonoUndOut :: MonoTerm -> MonoTerm
-
-  MonoTensor :: MonoTy -> MonoTy -> MonoTerm
-  MonoTensorPair :: MonoTerm -> MonoTerm -> MonoTerm
-  MonoTensorElim :: MonoTeleSubst -> {- which var in tele -} Int -> {- motive -} MonoTy -> {- branch -} MonoTerm -> MonoTerm
-
-  MonoHom :: MonoTy -> MonoTy -> MonoTerm
-  MonoHomLam :: MonoTerm -> MonoTerm
-  MonoHomApp :: MonoTerm -> MonoTerm -> MonoTerm
-  deriving (Show, Eq)
+instance Show Normal where show (Normal _ t) = show t
