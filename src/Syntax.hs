@@ -95,8 +95,6 @@ data Term where
 
   Tensor :: Ty -> Ty -> Ty
   TensorPair :: SlI -> Term -> SlI -> Term -> Term
-  -- TensorElim :: {- target -} Term -> {- motive -} Ty -> {- branch -} Term -> Term
-  -- TensorElimFrob :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
 
   Unit :: Ty
   UnitIn :: UnitI -> Term
@@ -127,23 +125,11 @@ semEnvTensor sl (SemEnv pal env) sr (SemTele pal' env') = (SemEnv (TensorSemPal 
 data Closure where
   Closure :: Term -> SemEnv -> Closure
   deriving (Eq)
-data Closure2 where
-  Closure2 :: Term -> SemEnv -> Closure2
-  deriving (Eq)
-data Closure3 where
-  Closure3 :: Term -> SemEnv -> Closure3
-  deriving (Eq)
-data ClosureT where
-  ClosureT :: Term -> SemEnv -> ClosureT
-  deriving (Eq)
 data ClosurePat where
   ClosurePat :: Term -> SemEnv -> ClosurePat
   deriving (Eq)
 
 instance Show Closure where show (Closure term _) = "(Closure (" ++ show term ++ ") [...])"
-instance Show Closure2 where show (Closure2 term _) = "(Closure2 (" ++ show term ++ ") [...])"
-instance Show Closure3 where show (Closure3 term _) = "(Closure3 (" ++ show term ++ ") [...])"
-instance Show ClosureT where show (ClosureT term _) = "(ClosureT (" ++ show term ++ ") [...])"
 instance Show ClosurePat where show (ClosurePat term _) = "(ClosurePat (" ++ show term ++ ") [...])"
 
 -- This is a closure containing a pattern
@@ -199,21 +185,6 @@ data Value where
   VHomLam :: Closure -> Value
   deriving (Show, Eq)
 
--- data Spine where
---   SNil :: Spine
-
---   SFst :: Spine -> Spine
---   SSnd :: Spine -> Spine
-
---   SApp :: Spine -> Normal -> Spine
---   SHomApp :: Spine -> Normal -> Spine
-
--- data StuckArg where
---   SPair :: StuckArg -> StuckArg -> StuckArg
---   STensor :: StuckArg -> StuckArg -> StuckArg
---   SNormal :: Normal -> StuckArg
---   deriving (Show, Eq)
-
 data Neutral where
   NVar :: Int -> Neutral -- DeBruijn levels for variables
   NZeroVar :: Int -> Neutral
@@ -226,33 +197,16 @@ data Neutral where
             {- branch -} ClosurePat ->
                          Neutral
 
-  -- NStuckArg :: Pat -> ClosurePat -> Value -> Neutral -- Stuck on an _argument_ that doesn't match the pattern
-
   NFst :: Neutral -> Neutral
   NSnd :: Neutral -> Neutral
 
-  -- NIdElim :: {- mot -} ClosureT -> {- branch -} ClosureT -> {- theta -} ([Normal], {- A -} VTy, {- a1 -} Value, {- a2 -} Value, Neutral, [Normal]) -> Neutral
-
   NUndOut :: Neutral -> Neutral
-
-  -- NTensorElim :: {- mot -} Closure ->
-  --                {- branch -} Closure2 ->
-  --                {- aty -} VTy ->
-  --                {- bty -} Closure ->
-  --                {- target -} Neutral -> Neutral
-
-  -- NTensorElimFrob :: {- mot -} ClosureT ->
-  --                {- branch -} ClosureT ->
-  --                {- tele: before, tensor, after -} ([ClosureT], ClosureT, [ClosureT]) ->
-  --                {- before, tensor |- after tele -}
-  --                {- tele sub -} ([Value], Neutral, [Value]) -> Neutral
 
   NHomApp :: Neutral -> Normal -> Neutral
   deriving (Show, Eq)
 
 data Normal where
   Normal :: { nfTy :: VTy, nfTerm :: Value } -> Normal
---  deriving (Show, Eq)
   deriving (Eq)
 
 instance Show Normal where show (Normal _ t) = show t
