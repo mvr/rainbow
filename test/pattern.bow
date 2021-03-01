@@ -1,8 +1,13 @@
--- let id : (A : U<0>) -> (A -> A) =
---     fun a -> fun x -> x
+let id : (A : U<0>) -> (A -> A) =
+    fun a -> fun x -> x
 
 let sym : (A : U<0>) (B : U<0>) (p : _A ⊗ _B) -> (_B ⊗ _A) = 
   fun A B p -> 
   match p at _B ⊗ _A with
     <<(x at _A), (y at _B)>>[r,b] -> <<y, x>>[b,r]
+
+let assoc : (A : U<0>) (B : U<0>) (C : U<0>) (p : _A ⊗ (_B ⊗ _C)) -> ((_A ⊗ _B) ⊗ _C) = 
+  fun A B C p -> 
+  match p at (_A ⊗ _B) ⊗ _C with
+    <<(x at _A), <<(y at _B), (z at _C)>>[b, yy]>>[r,g] -> << <<x, y>>[r, b], z >>[r b, yy]
 
