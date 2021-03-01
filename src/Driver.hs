@@ -58,9 +58,9 @@ bindColour :: C.Palette -> C.Ident -> Maybe SlI
 bindColour C.OnePal col = Nothing
 bindColour C.OriginPal col = Nothing
 bindColour (C.UnitPal _) col = Nothing
-bindColour (C.LabelPal i _) col
+bindColour (C.LabelPal i s) col
   | i == col = Just TopSl
-  | otherwise = Nothing
+  | otherwise = bindColour s col
 bindColour (C.CommaPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
