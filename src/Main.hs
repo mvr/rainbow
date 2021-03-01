@@ -10,8 +10,8 @@ import Driver as D
 checkFile :: String -> IO ()
 checkFile fn = do
   contents <- readFile fn
-  let parseResult = runParser (many decl <* eof) fn contents
-  
+  let parseResult = runParser (sc *> many decl <* eof) fn contents
+
   decls <- case parseResult of
     Left err -> error $ "Parse error: " ++ errorBundlePretty err
     Right decls -> return decls

@@ -7,9 +7,9 @@ type UnivLevel = Int
   -- deriving (Show, Eq)
 data Tele
   deriving (Show, Eq)
-data TeleSubst where
-  TeleSubst :: PaletteSubst -> [Term] -> TeleSubst
-  deriving (Show, Eq)
+-- data TeleSubst where
+--   TeleSubst :: PaletteSubst -> [Term] -> TeleSubst
+--   deriving (Show, Eq)
 
 type Ty = Term
 
@@ -22,47 +22,88 @@ data Pat where
   -- IdPat :: Pat -> Pat -> Pat
   deriving (Show, Eq)
 
+data PatShape where
+  OneShape :: PatShape
+  UnitShape :: PatShape
+  VarShape :: PatShape
+  PairShape :: PatShape -> PatShape -> PatShape
+  TensorShape :: PatShape -> PatShape -> PatShape
+  deriving (Show, Eq)
+
+patToType :: Pat -> Ty
+patToType OnePat = One
+patToType UnitPat = Unit
+patToType (VarPat ty) = ty
+patToType (PairPat p q) = Sg (patToType p) (patToType q)
+patToType (TensorPat p q) = Tensor (patToType p) (patToType q)
+
+patToShape :: Pat -> PatShape
+patToShape OnePat = OneShape
+patToShape UnitPat = UnitShape
+patToShape (VarPat _) = VarShape
+patToShape (PairPat p q) = PairShape (patToShape p) (patToShape q)
+patToShape (TensorPat p q) = TensorShape (patToShape p) (patToShape q)
+
+shapeToPal :: PatShape -> Palette
+shapeToPal = undefined
+
+-- To represent where we are in a pattern
+-- Note: we read a path backwards: if `(a, b), (c, d)` then
+-- `b` has path RightCommaPath (LeftCommaPath StartPath)
+data PatPath where
+  StartPath :: PatPath
+  LeftCommaPath :: PatPath -> PatPath
+  RightCommaPath :: PatPath -> PatPath
+  LeftTensorPath :: PatPath -> PatPath
+  RightTensorPath :: PatPath -> PatPath
+  deriving (Show, Eq)
+
 data Term where
   Check :: Term -> Ty -> Term
 
   Var :: Int -> Term -- DeBruijn indices for variables
   ZeroVar :: Int -> Term
 
-  Pi :: Ty -> Ty -> Term
-  Lam :: Term -> Term
-  App :: Term -> Term -> Term
+  Univ :: UnivLevel -> Ty
 
   Match :: {- target -} Term ->
-           -- {- type   -} Ty ->
            {- motive -} Ty ->
-                        Pat ->
+                        Pat -> -- Contains the types at the variables
            {- branch -} Term ->
                         Term
 
-  Sg :: Ty -> Ty -> Term
+  Sg :: Ty -> Ty -> Ty
   Pair :: Term -> Term -> Term
   Fst :: Term -> Term
   Snd :: Term -> Term
 
-  Id :: Ty -> Term -> Term -> Term
-  Refl :: Term
+  One :: Ty
+  OneIn :: Term
+
+  Pi :: Ty -> Ty -> Ty
+  Lam :: Term -> Term
+  App :: Term -> Term -> Term
+
+  Id :: Ty -> Term -> Term -> Ty
+  Refl :: Term -> Term
   -- IdElimSimple ::
   -- IdElim :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
 
-  Univ :: UnivLevel -> Term
-
-  Und :: Ty -> Term
+  Und :: Ty -> Ty
   UndIn :: Term -> Term
   UndOut :: Term -> Term
 
-  Tensor :: Ty -> Ty -> Term
-  TensorPair :: SliceIx -> Term -> SliceIx -> Term -> Term
+  Tensor :: Ty -> Ty -> Ty
+  TensorPair :: SlI -> Term -> SlI -> Term -> Term
   -- TensorElim :: {- target -} Term -> {- motive -} Ty -> {- branch -} Term -> Term
   -- TensorElimFrob :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
 
-  Hom :: Ty -> Ty -> Term
-  HomLam :: Pat -> Term -> Term
-  HomApp :: SliceIx -> Term -> SliceIx -> Term -> Term
+  Unit :: Ty
+  UnitIn :: UnitI -> Term
+
+  Hom :: Ty -> Ty -> Ty
+  HomLam :: Term -> Term
+  HomApp :: SlI -> Term -> SlI -> Term -> Term
   deriving (Show, Eq)
 
 data SemEnv = SemEnv SemPal [Value]
@@ -71,11 +112,17 @@ data SemEnv = SemEnv SemPal [Value]
 semEnvLength :: SemEnv -> Int
 semEnvLength (SemEnv _ env) = length env
 
-semEnvComma :: SemEnv -> SemEnv -> SemEnv
-semEnvComma (SemEnv pal env) (SemEnv pal' env') = (SemEnv (cleverCommaSemPal pal pal') (env' ++ env))
+data SemTele = SemTele SemPal [Value]
+  deriving (Eq)
 
-semEnvTensor :: SemEnv -> SemEnv -> SemEnv
-semEnvTensor (SemEnv pal env) (SemEnv pal' env') = (SemEnv (TensorSemPal pal pal') (env' ++ env))
+semEnvExt :: SemEnv -> [Value] -> SemEnv
+semEnvExt (SemEnv pal env) env' = (SemEnv pal (env' ++ env))
+
+semEnvComma :: SemEnv -> SemTele -> SemEnv
+semEnvComma (SemEnv pal env) (SemTele pal' env') = (SemEnv (CommaSemPal pal pal') (env' ++ env))
+
+semEnvTensor :: SlL -> SemEnv -> SlL -> SemTele -> SemEnv
+semEnvTensor sl (SemEnv pal env) sr (SemTele pal' env') = (SemEnv (TensorSemPal sl pal sr pal') (env' ++ env))
 
 data Closure where
   Closure :: Term -> SemEnv -> Closure
@@ -104,6 +151,10 @@ data PatClosure where
   PatClosure :: Pat -> SemEnv -> PatClosure
   deriving (Eq)
 instance Show PatClosure where show (PatClosure pat _) = "(PatClosure (" ++ show pat ++ ") [...])"
+-- data PatHomClosure where
+--   PatHomClosure :: Pat -> SemEnv -> PatHomClosure
+--   deriving (Eq)
+-- instance Show PatHomClosure where show (PatHomClosure pat _) = "(PatHomClosure (" ++ show pat ++ ") [...])"
 
 type VTy = Value
 
@@ -114,6 +165,8 @@ data VPat where
   PairVPat :: VPat -> PatClosure -> VPat
   TensorVPat :: VPat -> PatClosure -> VPat
   -- IdVPat :: VPat -> VPat -> VPat
+  -- UnitorLeftVPat
+  -- UnitorRightVPat
   deriving (Show, Eq)
 
 data Value where
@@ -137,10 +190,10 @@ data Value where
   VUndIn :: Value -> Value
 
   VUnit :: Value
-  VUnitIn :: UnitLvl -> Value
+  VUnitIn :: UnitL -> Value
 
   VTensor :: VTy -> Closure -> Value
-  VTensorPair :: SliceLvl -> Value -> SliceLvl -> Value -> Value
+  VTensorPair :: SlL -> Value -> SlL -> Value -> Value
 
   VHom :: VTy -> Closure -> Value
   VHomLam :: Closure -> Value
@@ -155,11 +208,11 @@ data Value where
 --   SApp :: Spine -> Normal -> Spine
 --   SHomApp :: Spine -> Normal -> Spine
 
-data StuckArg where
-  SPair :: StuckArg -> StuckArg -> StuckArg
-  STensor :: StuckArg -> StuckArg -> StuckArg
-  SNormal :: Normal -> StuckArg
-  deriving (Show, Eq)
+-- data StuckArg where
+--   SPair :: StuckArg -> StuckArg -> StuckArg
+--   STensor :: StuckArg -> StuckArg -> StuckArg
+--   SNormal :: Normal -> StuckArg
+--   deriving (Show, Eq)
 
 data Neutral where
   NVar :: Int -> Neutral -- DeBruijn levels for variables
@@ -168,6 +221,7 @@ data Neutral where
   NApp :: Neutral -> Normal -> Neutral
   NMatch :: {- target -} Normal ->
             {- motive -} Closure ->
+                         PatShape ->
                          VPat ->
             {- branch -} ClosurePat ->
                          Neutral

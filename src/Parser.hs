@@ -23,7 +23,7 @@ symbol :: String -> Parser String
 symbol = L.symbol sc
 
 reserved :: [String]
-reserved = ["let", "fun", "fst", "snd", "type", "at", "with", "tensormatch", "hom", "don't"]
+reserved = ["let", "fun", "fst", "snd", "undin", "undout", "U", "type", "at", "with", "match", "hom", "don't"]
 
 ident :: Parser Ident
 ident = (lexeme . try) (p >>= check)
@@ -50,52 +50,52 @@ homSym = pure () <* (try (symbol "-o") <|> symbol "⊸")
 
 slice :: Parser Slice
 slice = try ( symbol "_" *> pure (Slice []) )
-  <|> (Slice <$> many (NamedColour <$> ident))
+  <|> (Slice <$> many ident)
 
-palettePiece :: Parser PalettePiece
-palettePiece = do
-  symbol "("
-  r <- (Just <$> ident) <|> (pure Nothing <* char '_')
-  rp <- try (symbol "=" *> palette) 
-        <|> pure (emptyPal)
-  tensorSym
-  b <- (Just <$> ident) <|> (pure Nothing <* char '_')
-  bp <- try (symbol "=" *> palette) 
-        <|> pure (emptyPal)
-  symbol ")"
-  return $ TensorPal r rp b bp
+-- palettePiece :: Parser PalettePiece
+-- palettePiece = do
+--   symbol "("
+--   r <- (Just <$> ident) <|> (pure Nothing <* char '_')
+--   rp <- try (symbol "=" *> palette)
+--         <|> pure (emptyPal)
+--   tensorSym
+--   b <- (Just <$> ident) <|> (pure Nothing <* char '_')
+--   bp <- try (symbol "=" *> palette)
+--         <|> pure (emptyPal)
+--   symbol ")"
+--   return $ TensorPal r rp b bp
 
-palette :: Parser Palette
-palette = Palette <$> (try (symbol "_" *> return []) <|> (palettePiece `sepBy1` (symbol ",")))
+-- palette :: Parser Palette
+-- palette = Palette <$> (try (symbol "_" *> return []) <|> (palettePiece `sepBy1` (symbol ",")))
 
-palSubstPiece = do
-  symbol "("
-  slr <- slice
-  symbol "/"
-  r <- ident
-  rtheta <- try (symbol "=" *> palSubst)
-            <|> pure (PaletteSubst [])
-  tensorSym
-  slb <- slice
-  symbol "/"
-  b <- ident
-  btheta <- try (symbol "=" *> palSubst)
-            <|> pure (PaletteSubst [])
-  symbol ")"
-  return $ TensorPalSub slr r rtheta slb b btheta
+-- palSubstPiece = do
+--   symbol "("
+--   slr <- slice
+--   symbol "/"
+--   r <- ident
+--   rtheta <- try (symbol "=" *> palSubst)
+--             <|> pure (PaletteSubst [])
+--   tensorSym
+--   slb <- slice
+--   symbol "/"
+--   b <- ident
+--   btheta <- try (symbol "=" *> palSubst)
+--             <|> pure (PaletteSubst [])
+--   symbol ")"
+--   return $ TensorPalSub slr r rtheta slb b btheta
 
-palSubst :: Parser PaletteSubst
-palSubst = try (symbol "_" *> pure (PaletteSubst []))
-  <|> PaletteSubst <$>  palSubstPiece `sepBy1` (symbol ",")
+-- palSubst :: Parser PaletteSubst
+-- palSubst = try (symbol "_" *> pure (PaletteSubst []))
+--   <|> PaletteSubst <$>  palSubstPiece `sepBy1` (symbol ",")
 
 -- telesubst :: Parser TeleSubst
--- telesubst = do 
+-- telesubst = do
 --   ps <- palettesubst
 --   symbol "#"
 --   args <- sepBy mark (symbol ",")
 
 -- colour :: Parser Colour
--- colour = try (symbol "⊤" *> pure ()) 
+-- colour = try (symbol "⊤" *> pure ())
 
 -- atomicTy :: Parser Ty
 -- atomicTy = BaseTy <$> ident
@@ -103,7 +103,7 @@ palSubst = try (symbol "_" *> pure (PaletteSubst []))
 --            <|> Und <$> (symbol "♮" *> ty)
 
 -- ty :: Parser Ty
--- ty = 
+-- ty =
 --   <|> try (symbol "(" *> ty <* symbol ")")
 --   <|> BaseTy <$> ident
 
@@ -117,8 +117,16 @@ teleCell = do
   return $ TeleCell (Just n) nty
 
 atomic :: Parser Term
-atomic = 
+atomic =
   try ( symbol "(" *> term <* symbol ")" )
+  <|> try ( do
+    symbol "("
+    a <- term
+    symbol "at"
+    b <- term
+    symbol ")"
+    return (Check a b)
+  )
   <|> try ( Univ <$> (symbol "U<" *> L.decimal <* symbol ">"))
   <|> try ( UndIn <$> (symbol "undin" *> term))
   <|> try ( UndOut <$> (symbol "undout" *> term))
@@ -152,22 +160,22 @@ atomic =
   )
   <|> try (ZeroVar <$> (char '_' *> ident))
   <|> Var <$> ident
-  
+
 term :: Parser Term
-term = 
+term =
   try ( Fst <$> (symbol "fst" *> term))
   <|> try ( Snd <$> (symbol "snd" *> term))
   <|> try (
-    do 
-    symbol "fun" 
+    do
+    symbol "fun"
     xs <- some ident
     funSym
     t <- term
     return (Lam xs t)
   )
   <|> try (
-    do 
-      symbol "tensormatch"
+    do
+      symbol "match"
       s <- term
       symbol "at"
       z <- try (do
@@ -179,90 +187,17 @@ term =
       mot <- term
       symbol "with"
 
-      symbol "<<"
-      x <- ident
-      symbol ","
-      y <- ident
-      symbol ">>"
-      (xc, yc) <- do
-        symbol "["
-        xc <- ident
-        symbol ","
-        yc <- ident
-        symbol "]"
-        return (Just xc, Just yc)
-        <|>
-        return (Nothing, Nothing)
-
-      funSym
-
-      c <- term      
-      
-      return $ TensorElim s z mot (x, xc) (y, yc) c
-    )
-  <|> try (
-    do
-      symbol "tensormatch"
-      ps <- palSubst
-      symbol "|" 
-      theta <- flip sepBy (symbol ",") $ do 
-        t <- term
-        -- symbol "/"
-        -- v <- ident
-        return t
-      symbol "at" 
-      p <- palette
-      symbol "|"
-      omega <- some $ do
-        symbol "("
-        v <- ident
-    
-        col <- try (do
-          symbol "["
-          n <- ident
-          symbol "]"
-          return (NamedColour n)
-          ) 
-          <|> return TopColour
-
-        symbol ":"
-
-        ty <- term
-        symbol ")"
-        return (v, col, ty)
-         
-      funSym
-      mot <- term
-
-      symbol "with"
-      z <- ident
-      symbol "="
-
-      symbol "<<"
-      x <- ident
-      symbol ","
-      y <- ident
-      symbol ">>"
-
-      (xc, yc) <- do
-        symbol "["
-        xc <- ident
-        symbol ","
-        yc <- ident
-        symbol "]"
-        return (Just xc, Just yc)
-        <|>
-        return (Nothing, Nothing)
+      pat <- atomic
 
       funSym
 
       c <- term
 
-      return (TensorElimFrob p omega (TeleSubst ps theta) z mot (x, xc) (y, yc) c)
+      return (Match s z mot pat c)
     )
   <|> try (
-    do 
-      symbol "hom" 
+    do
+      symbol "hom"
 
       (tc, ac) <- do
         symbol "["
@@ -284,8 +219,8 @@ term =
       return (HomLam tc ac a body)
     )
 
-  <|> try ( 
-    do 
+  <|> try (
+    do
       symbol "("
       f <- term
       symbol "@"
@@ -301,7 +236,7 @@ term =
         return (Just fc, Just ac)
         <|>
         return (Nothing, Nothing)
-      
+
 
       return (HomApp fc f ac a)
     )
@@ -319,6 +254,7 @@ term =
               b <- term
               return (Sg [TeleCell Nothing a] b)
               )
+  <|> try (One <$ symbol "1")
   <|> try (Tensor Nothing <$> atomic <* tensorSym <*> term)
   <|> try (do
               TeleCell n a <- teleCell
@@ -335,30 +271,33 @@ term =
           )
   <|> try (Und <$> (symbol "♮" *> term))
   <|> (
-    do 
+    do
     f <- atomic
     args <- many atomic
-    return (App f args)
+    if length args > 0 then -- We actually need this so `App`s don't end up in patterns.
+      return (App f args)
+    else
+      return f
   )
 
 
 decl :: Parser Decl
 decl =
   do
-    symbol "let" 
+    symbol "let"
     n <- ident
-    symbol ":" 
+    symbol ":"
     t <- term
-    symbol "=" 
+    symbol "="
     body <- term
     return (Def n body t)
   <|>
   do
-    symbol "don't" 
-    symbol "let" 
+    symbol "don't"
+    symbol "let"
     n <- ident
-    symbol ":" 
+    symbol ":"
     t <- term
-    symbol "=" 
+    symbol "="
     body <- term
     return (Dont n body t)

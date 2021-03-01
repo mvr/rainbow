@@ -17,6 +17,14 @@ executable rainbow
   hs-source-dirs:      src
   main-is:             Main.hs
   default-language:    Haskell2010
+  other-modules:     Check
+                   , Concrete
+                   , Driver
+                   , Normalize
+                   , Palette
+                   , Parser
+                   , Syntax
+--  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   default-extensions:  GADTs
                      , GeneralizedNewtypeDeriving
                      , FlexibleContexts
