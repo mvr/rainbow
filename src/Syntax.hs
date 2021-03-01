@@ -17,8 +17,10 @@ data Pat where
   OnePat :: Pat
   UnitPat :: Pat
   VarPat :: Ty -> Pat
+  ZeroVarPat :: Ty -> Pat
   PairPat :: Pat -> Pat -> Pat
   TensorPat :: Pat -> Pat -> Pat
+  UndInPat :: Pat -> Pat
   -- IdPat :: Pat -> Pat -> Pat
   deriving (Show, Eq)
 
@@ -34,8 +36,10 @@ patToType :: Pat -> Ty
 patToType OnePat = One
 patToType UnitPat = Unit
 patToType (VarPat ty) = ty
+patToType (ZeroVarPat ty) = ty
 patToType (PairPat p q) = Sg (patToType p) (patToType q)
 patToType (TensorPat p q) = Tensor (patToType p) (patToType q)
+patToType (UndInPat p) = Und (patToType p)
 
 patToShape :: Pat -> PatShape
 patToShape OnePat = OneShape
@@ -148,8 +152,10 @@ data VPat where
   OneVPat :: VPat
   UnitVPat :: VPat
   VarVPat :: VTy -> VPat
+  ZeroVarVPat :: VTy -> VPat
   PairVPat :: VPat -> PatClosure -> VPat
   TensorVPat :: VPat -> PatClosure -> VPat
+  UndInVPat :: VPat -> VPat
   -- IdVPat :: VPat -> VPat -> VPat
   -- UnitorLeftVPat
   -- UnitorRightVPat

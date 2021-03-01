@@ -6,6 +6,19 @@ let sym : (A : U<0>) (B : U<0>) (p : _A ⊗ _B) -> (_B ⊗ _A) =
   match p at _B ⊗ _A with
     <<(x at _A), (y at _B)>>[r,b] -> <<y, x>>[b,r]
 
+-- let lax : (A : U<0>) (B : _A -> U<0>) (n : ♮((x : _A) ⊗ _B _x)) -> (y : ♮ _A) * ♮ (_B (undout _y)) =
+--   fun A B n ->
+--   match (undout n) at ((y : ♮ _A) * ♮ (_B (undout _y))) with
+--     (undin <<(_x at _A), (_y at _B _x)>>[1, 1]) -> <undin _x, undin _y>
+
+let lax : (A : U<0>) (B : _A -> U<0>) (n : ♮((x : _A) ⊗ _B _x)) -> (y : ♮ _A) * ♮ (_B (undout _y)) =
+  fun A B n ->
+  match (undout n) at ((y : ♮ _A) * ♮ (_B (undout _y))) with
+    <<(x at _A), (y at _B _x)>>[r, b] -> <undin _x, undin _y>
+
+let unlax : (A : U<0>) (B : _A -> U<0>) (m : (y : ♮ _A) * ♮ (_B (undout _y))) -> ♮((x : _A) ⊗ _B _x)  =
+  fun A B m -> undin << undout (fst _m), undout (snd _m) >>[1,1]
+
 let assoc : (A : U<0>) (B : U<0>) (C : U<0>) (p : _A ⊗ (_B ⊗ _C)) -> ((_A ⊗ _B) ⊗ _C) = 
   fun A B C p -> 
   match p at (_A ⊗ _B) ⊗ _C with

@@ -49,8 +49,11 @@ homSym :: Parser ()
 homSym = pure () <* (try (symbol "-o") <|> symbol "⊸")
 
 slice :: Parser Slice
-slice = try ( symbol "_" *> pure (Slice []) )
+slice = try ( symbol "_" *> pure SliceOmitted )
+  <|> try ( symbol "1" *> pure SliceOne)
+  <|> try ( symbol "top" *> pure SliceTop)
   <|> (Slice <$> many ident)
+
 
 -- colour :: Parser Colour
 -- colour = try (symbol "⊤" *> pure ())

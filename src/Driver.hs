@@ -15,11 +15,13 @@ import Palette
 
 -- The name is optional so we can conveniently write
 -- e.g. non-dependent sums and products
-data BindEntry = BindTerm (Maybe C.Ident)
+data BindEntry = BindTerm {- name -} (Maybe C.Ident)
                | BindTopLevel C.Ident
   deriving (Show)
 
 data Bindings = Bindings { bindVars :: [BindEntry] }
+
+
 
 bindsLookup :: Bindings -> C.Ident -> Int
 bindsLookup binds name = case findIndex (\be -> case be of
@@ -78,11 +80,16 @@ bindColour (C.TensorPal l r) col =
 
 bindSlice :: C.Palette -> C.Slice -> Maybe SlI
 bindSlice pal (C.Slice cols) = mconcat <$> traverse (bindColour pal) cols
+bindSlice pal (C.SliceOne) = Just OneSl
 
 bindUnit :: C.Palette -> C.Unit -> Maybe UnitI
 bindUnit = undefined
 
 type SymCounter = Int
+
+-- data BindState = BindState { symCounter :: SymCounter, bindPalette :: C.Palette, binds :: Bindings, currentSlice :: SlI }
+
+-- type BindM = State BindState S.Term
 
 genColLike :: C.Ident -> State SymCounter C.Ident
 genColLike n = do
@@ -97,18 +104,26 @@ patVars :: C.Pat -> [BindEntry]
 patVars C.OnePat = []
 patVars (C.UnitPat _) = []
 patVars (C.VarPat x _) = [BindTerm (Just x)]
+patVars (C.ZeroVarPat x _) = [BindTerm (Just x)]
 patVars (C.PairPat p q) = patVars q ++ patVars p
 patVars (C.TensorPat _ p _ q) = patVars q ++ patVars p
+patVars (C.UndInPat p) = patVars p
 
 bindPat :: C.Palette -> Bindings -> C.Pat -> State SymCounter S.Pat
 bindPat pal env (C.OnePat) = pure S.OnePat
 bindPat pal env (C.UnitPat _) = pure S.UnitPat
 bindPat pal env (C.VarPat _ ty) = S.VarPat <$> bind pal env ty
+bindPat pal env (C.ZeroVarPat _ ty) = S.ZeroVarPat <$> bind pal env ty
+bindPat pal env (C.UndInPat p) = S.UndInPat <$> bindPat pal env p
 bindPat pal env (C.PairPat p q) = do
   p' <- bindPat pal env p
   q' <- bindPat pal (bindsExtMany env (patVars p)) q
   return $ S.PairPat p' q'
 bindPat pal env (C.TensorPat _ p _ q) = do
+  p' <- bindPat pal env p
+  q' <- bindPat pal (bindsExtMany env (patVars p)) q
+  return $ S.TensorPat p' q'
+bindPat pal env (C.ZeroTensorPat p q) = do
   p' <- bindPat pal env p
   q' <- bindPat pal (bindsExtMany env (patVars p)) q
   return $ S.TensorPat p' q'

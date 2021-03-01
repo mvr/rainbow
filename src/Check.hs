@@ -103,7 +103,7 @@ ctxLen :: SemCtx -> Int
 ctxLen = length . ctxVars
 
 ctxSize :: SemCtx -> Size
-ctxSize = undefined
+ctxSize ctx = N.Size (ctxLen ctx) (semPalDepth $ ctxPal ctx)
 
 envExt :: SemEnv -> Value -> SemEnv
 envExt (SemEnv pal env) v = SemEnv pal (v : env)
@@ -313,7 +313,20 @@ checkAndEvalPat s path (VarPat ty) = do
 
   return $ ([CtxEntry v vty (Col i)], v)
 
+checkAndEvalPat s path (ZeroVarPat ty) = do
+  checkTy OneSl ty
+  size <- asks ctxSize
+  env <- asks ctxToEnv
+
+  let vty = N.eval env ty
+      v = N.makeZeroVarValS vty size
+
+  return $ ([CtxEntry v vty Marked], v)
+
 checkAndEvalPat s _ OnePat = pure ([], VOneIn)
+checkAndEvalPat s path (UndInPat p) = do
+  (ptele, pterm) <- checkAndEvalPat s undefined p -- FIXME: this is stupid
+  return $ (ptele, VUndIn pterm)
 checkAndEvalPat s path UnitPat = do
   size <- asks ctxSize
   let u = N.makeUnitVal size path

@@ -8,7 +8,6 @@ data Palette where
   UnitPal :: Palette
   deriving (Show, Eq)
 
-
 data Choice a = Yes | No | Sub a
   deriving (Show, Eq, Functor)
 
@@ -122,11 +121,13 @@ palToSemPal = undefined
 instance Semigroup SlL where
 instance Monoid SlL where
 
+semPalDepth :: SemPal -> Int
+semPalDepth OriginSemPal = 0
+semPalDepth (CommaSemPal l _) = 1 + semPalDepth l
+semPalDepth (TensorSemPal _ l _ _) = 1 + semPalDepth l
+
 semPalTopSlice :: SemPal -> SlL
-semPalTopSlice pal = SlL (go pal) TopSl
-  where go OriginSemPal = 0
-        go (CommaSemPal l _) = 1 + go l
-        go (TensorSemPal _ l _ _) = 1 + go l
+semPalTopSlice pal = SlL (semPalDepth pal) TopSl
 
 lookupSlice :: SemPal -> SlI -> SlL
 -- lookupSlice pal TopSlI = semEnvTopSlice pal

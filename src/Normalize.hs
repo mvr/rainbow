@@ -112,8 +112,10 @@ recoverPatType :: VPat -> VTy
 recoverPatType OneVPat = VOne
 recoverPatType UnitVPat = VUnit
 recoverPatType (VarVPat ty) = ty
+recoverPatType (ZeroVarVPat ty) = ty
 recoverPatType (PairVPat p (PatClosure q env)) = VSg (recoverPatType p) (Closure (patToType q) env)
 recoverPatType (TensorVPat p (PatClosure q env)) = VTensor (recoverPatType p) (Closure (patToType q) env)
+recoverPatType (UndInVPat p) = VUnd (recoverPatType p)
 
 -- WARNING: this has to give the variables in reverse order in the end: youngest first
 matchPat :: PatShape -> Value -> Maybe SemTele
@@ -133,8 +135,10 @@ evalPat :: SemEnv -> Pat -> VPat
 evalPat env OnePat = OneVPat
 evalPat env UnitPat = UnitVPat
 evalPat env (VarPat ty) = VarVPat (eval env ty)
+evalPat env (ZeroVarPat ty) = ZeroVarVPat (eval env ty)
 evalPat env (PairPat p q) = PairVPat (evalPat env p) (PatClosure q env)
 evalPat env (TensorPat p q) = TensorVPat (evalPat env p) (PatClosure q env)
+evalPat env (UndInPat p) = UndInVPat (evalPat env p)
 
 doClosure :: Closure -> Value -> Value
 doClosure (Closure t (SemEnv pal env)) a = eval (SemEnv pal (a : env)) t
@@ -221,6 +225,9 @@ makeVarVal ty lev = VNeutral ty (NVar lev)
 
 makeVarValS :: VTy -> {- level -} Size -> Value
 makeVarValS ty (Size _ lev) = VNeutral ty (NVar lev)
+
+makeZeroVarValS :: VTy -> {- level -} Size -> Value -- FIXME: should this zero `ty` or assume it is zeroed?
+makeZeroVarValS ty (Size _ lev) = VNeutral ty (NZeroVar lev)
 
 -- FIXME: Should we be calculating the palette extension first? In
 -- this function we may be able to get away with doing it as we go.

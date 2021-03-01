@@ -40,7 +40,8 @@ data Palette where
 -- FIXME: Let's try this first, a slice is specified by a list of labels that are tensored together.
 data Slice where
   Slice :: [Ident] -> Slice
-  SliceBot :: Slice
+  SliceOmitted :: Slice
+  SliceOne :: Slice
   SliceTop :: Slice
   deriving (Show, Eq)
 
@@ -125,17 +126,24 @@ data Pat where
   OnePat :: Pat
   UnitPat :: Ident -> Pat
   VarPat :: Ident -> Ty -> Pat
+  ZeroVarPat :: Ident -> Ty -> Pat
+  UndInPat :: Pat -> Pat
   PairPat :: Pat -> Pat -> Pat
   TensorPat :: Ident -> Pat -> Ident -> Pat -> Pat
+  ZeroTensorPat :: Pat -> Pat -> Pat
   deriving (Show)
 
 comprehendPat :: Term -> Maybe Pat
-comprehendPat (Check (Var x) ty) = Just $ VarPat x ty
-comprehendPat OneIn = Just $ OnePat
-comprehendPat (Pair x y) = PairPat <$> comprehendPat x <*> comprehendPat y
-comprehendPat (TensorPair (Just (Slice [l])) x (Just (Slice [r])) y) = TensorPat <$> pure l <*> comprehendPat x <*> pure r <*> comprehendPat y
-comprehendPat (UnitIn u) = undefined
-comprehendPat _ = Nothing
+comprehendPat t = go False t -- Have we been zeroed by an UndIn yet?
+  where
+    go False (Check (Var x) ty) = Just $ VarPat x ty
+    go True (Check (ZeroVar x) ty) = Just $ ZeroVarPat x ty
+    go f OneIn = Just $ OnePat
+    go f (Pair x y) = PairPat <$> go f x <*> go f y
+    go False (TensorPair (Just (Slice [l])) x (Just (Slice [r])) y) = TensorPat <$> pure l <*> go False x <*> pure r <*> go False y
+    go True (TensorPair (Just SliceOne) x (Just SliceOne) y) = ZeroTensorPat <$> go True x <*> go True y
+    go f (UndIn u) = UndInPat <$> go True u
+    go _ _ = Nothing
 
 patPalette :: Pat -> Palette
 patPalette OnePat = OnePal
@@ -143,6 +151,7 @@ patPalette (VarPat _ _) = OnePal
 patPalette (UnitPat u) = UnitPal u
 patPalette (PairPat p q) = CommaPal (patPalette p) (patPalette q)
 patPalette (TensorPat sl p sr q) = TensorPal (LabelPal sl (patPalette p)) (LabelPal sr (patPalette q))
+patPalette (UndInPat p) = OnePal
 
 data Decl where
   Def :: Ident -> Term -> Ty -> Decl
