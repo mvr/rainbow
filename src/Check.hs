@@ -292,75 +292,6 @@ synth s (Match tar mot pat branch) = do
 
   return $ N.eval (envExt semEnv (N.eval semEnv tar)) mot
 
-
--- synth (TensorElim t mot br) = do
---   tty <- synth t
-
---   (aty, bclo) <- case tty of
---                   (VTensor aty bclo) -> return (aty, bclo)
---                   _ -> throwError "expected target to be Tensor"
-
---   lev <- asks ctxLen
-
---   let mott = makeVarVal (VTensor aty bclo) lev
---   local (ctxExtVal mott (VTensor aty bclo)) $ checkTy mot
-
---   let psi = Palette []
---   let (psi', r, b) = palAddTensor psi TopColour
---   let bra = makeVarVal aty lev
---       brbty = N.doClosure bclo bra
---       brb = makeVarVal brbty (lev+1)
---       brtele = SemTele psi' [(brb, brbty, Just b), (bra, aty, Just r)]
-
---   semEnv <- asks ctxToEnv
-
---   local (ctxExtTele brtele) $ check br (N.eval (VTensorPair bra brb : semEnv) mot)
-
---   return $ N.eval ((N.eval semEnv t) : semEnv) mot
-
--- --synth (TensorElimFrob psi omega theta tIdx mot br) | traceShow (psi, omega, theta, tIdx, mot, br) False = undefined
--- synth (TensorElimFrob psi omega theta tIdx mot br) = do
---   -- TODO: add sanity checks on the lengths of psi omega theta etc
-
---   local (ctxExtTele (SemTele psi [])) $ checkTeleSubst psi omega theta
-
---   mottele <- evalTele psi omega
---   local (ctxExtTele mottele) $ checkTy mot
-
---   let (_, (_, tty, Just zcol):teletysbefore) = splitAt (length omega - tIdx - 1) (semTeleVars mottele)
---   (aty, bclo) <- case tty of
---                    (VTensor aty bclo) -> return (aty, bclo)
---                    _ -> throwError "expected target to be Tensor"
-
---   let (psi', r, b) = palAddTensor psi zcol
---   let (_, _:omegaafter) = splitAt tIdx omega
---   lev <- asks ctxLen
---   let bra = makeVarVal aty (lev + length teletysbefore)
---       brbty = N.doClosure bclo bra
---       brb = makeVarVal brbty (lev + length teletysbefore + 1)
-
---       doWk = fmap (\(t, ty, c) -> (t, ty, fmap (colWkAt 1 psi' zcol) c))
---       doWk2 = fmap (\(c, ty) -> (colWkAt 1 psi' zcol c, ty))
-
---   let telebeforeandtensor = SemTele psi' ((VTensorPair bra brb, VTensor aty bclo, Just $ colWkAt 1 psi' zcol zcol) : doWk teletysbefore)
-
---   teleafter <- local (ctxExtTele telebeforeandtensor) $ evalTele emptyPal (doWk2 omegaafter)
-
---   -- traceShow "in tensorelimfrob:" $ return ()
---   -- traceShow telebeforeandtensor $ return ()
---   -- traceShow omegaafter $ return ()
---   -- traceShow teleafter $ return ()
-
---   let telesplit = SemTele psi' (semTeleVars teleafter ++ [(brb, brbty, Just b), (bra, aty, Just r)] ++ teletysbefore)
---       subunsplit = teleToEnv teleafter ++ teleToEnv telebeforeandtensor
-
---   semEnv <- asks ctxToEnv
---   local (ctxExtTele telesplit) $ check br (N.eval (subunsplit ++ semEnv) mot)
-
---   thetaval <- evalSubst psi omega theta
-
---   return $ N.eval (thetaval ++ semEnv) mot
-
 synth s a = throwError $ "cannot synth the type of " ++ show a
 
 -- This duplicates some logic in `Normalise` but I think this avoids
@@ -421,38 +352,6 @@ sliceAtType' (RightCommaPath StartPath) = (CommaSl Yes Yes, False)
 sliceAtType' (RightCommaPath p) = case sliceAtType' p of
   (s, True) -> (CommaSl No (Sub s), True)
   (s, False) -> (CommaSl Yes (Sub s), False)
-
--- checkTeleSubst :: Palette -> [(ColI, Ty)] -> TeleSubst -> CheckM ()
--- checkTeleSubst psi cs (TeleSubst kappa as) = go cs as []
---   where go [] [] teleenv = return ()
---         go ((c,ty):cs) (a:as) teleenv = do
---           semEnv <- asks ctxToEnv
---           let tyval = N.eval (teleenv ++ semEnv) ty
---           local (ctxRestrict (sliceWkTop (palSize psi) $ sliceSubst (colourToSlice c) kappa)) $ check a tyval
---           go cs as (N.eval semEnv a : teleenv)
-
--- evalTele :: Palette -> [(ColI, Ty)] -> CheckM SemTele
--- evalTele pal [] = return $ SemTele pal []
--- evalTele pal ((c, ty):cs) = do
---   semEnv <- asks ctxToEnv
---   lev <- asks ctxLen
---   let tyval = N.eval semEnv ty
---       var = makeVarVal tyval lev
---   traceShow "in evalTele:" $ return ()
---   traceShow semEnv $ return ()
---   traceShow ty $ return ()
---   traceShow tyval $ return ()
---   (SemTele _ vs) <- local (ctxExtVar var tyval c) $ evalTele pal cs
---   return (SemTele pal (vs ++ [(var, tyval, Just c)]))
-
--- evalSubst :: Palette -> [(ColI, Ty)] -> TeleSubst -> CheckM [Value]
--- evalSubst psi [] (TeleSubst kappa []) = return [] -- TODO: check the palette subst?
--- evalSubst psi ((c,ty):cs) (TeleSubst kappa (a:as)) = do
---   semEnv <- asks ctxToEnv
---   let tyval = N.eval semEnv ty
---       aval = (N.eval semEnv a)
---   vs <- local (ctxExtVar aval tyval c) $ evalSubst psi cs (TeleSubst kappa as)
---   return $ (aval:vs)
 
 checkTy :: SlI -> Ty -> CheckM ()
 -- checkTy t | traceShow ("Check ty: " ++ show t) False = undefined

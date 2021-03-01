@@ -29,35 +29,11 @@ bindsLookup binds name = case findIndex (\be -> case be of
   Just i -> i
   Nothing -> error $ "Unbound variable " ++ name
 
--- bindsLookupColour :: Bindings -> C.Ident -> C.Colour
--- bindsLookupColour binds name = case find (\be -> case be of
---                                             BindTerm (Just n') _ -> name == n'
---                                             BindTerm Nothing _ -> False
---                                             BindTopLevel n' -> name == n') (bindVars binds) of
-
---   Just (BindTerm _ c) -> c
---   Just (BindTopLevel _) -> C.TopColour
---   Nothing -> error $ "Unbound variable " ++ name
-
 bindsExt :: Bindings -> Maybe C.Ident -> Bindings
 bindsExt binds@(Bindings { bindVars }) name = binds { bindVars = (BindTerm name):bindVars }
 
 bindsExtMany :: Bindings -> [BindEntry] -> Bindings
 bindsExtMany binds@(Bindings { bindVars }) names = binds { bindVars = names ++ bindVars }
-
--- entryExtHom :: C.Ident -> BindEntry -> BindEntry
--- entryExtHom bodyc (BindTerm n c) = BindTerm n (C.colExtHom bodyc c)
--- entryExtHom bodyc (BindTopLevel n) = BindTopLevel n
-
--- bindsExtHom :: Bindings -> C.Ident -> C.Ident -> C.Ident -> Bindings
--- bindsExtHom binds@(Bindings { bindVars }) bodyc yc y
---   = binds { bindVars = (BindTerm (Just y) (C.NamedColour yc)):(fmap (entryExtHom bodyc) bindVars) }
-
--- -- bindsExtTele :: Binds ->
--- bindsExtTele (Bindings vars) omega = Bindings (reverse omega ++ vars)
-
--- guessSliceTele :: C.Palette -> Bindings -> C.TeleSubst -> C.Slice
--- guessSliceTele pal env (C.TeleSubst _ ts) = foldl C.sliceUnion (C.Slice []) $ fmap (guessSlice pal env) ts
 
 -- guessSlice :: C.Palette -> Bindings -> C.Term -> C.Slice
 -- guessSlice pal env (C.Check a ty) = guessSlice pal env a
@@ -77,24 +53,6 @@ bindsExtMany binds@(Bindings { bindVars }) names = binds { bindVars = names ++ b
 -- -- guessSlice pal env (C.TensorElimFrob psi omega theta z mot (x, xc) (y, yc) c) = (guessSliceTele pal env theta) `C.sliceUnion` (guessSlice pal env c)
 -- guessSlice pal env (C.HomLam bodyc yc y body) = guessSlice pal env body
 -- guessSlice pal env (C.HomApp slL f slR a) = (guessSlice pal env f) `C.sliceUnion` (guessSlice pal env a)
-
--- bindPalPiece :: C.PalettePiece -> PalettePiece
--- bindPalPiece (C.TensorPal _ pL _ pR) = TensorPal (bindPal pL) (bindPal pR)
-
--- bindPal :: C.Palette -> Palette
--- bindPal (C.Palette ps) = Palette $ fmap bindPalPiece ps
-
--- bindColour :: C.Palette -> C.Colour -> Maybe ColourIndex
--- bindColour pal (C.TopColour) = Just TopColour
--- bindColour (C.Palette []) (C.NamedColour n) = error $ "Unknown colour " ++ n
--- bindColour (C.Palette ((C.TensorPal nL pL nR pR):ps)) (C.NamedColour n)
---   | nL == Just n = Just $ LeftSub 0 TopColour
---   | nR == Just n = Just $ RightSub 0 TopColour
---   | Just c <- bindColour pL (C.NamedColour n) = Just $ LeftSub 0 c
---   | Just c <- bindColour pR (C.NamedColour n) = Just $ RightSub 0 c
---   | Just (LeftSub i c) <- bindColour (C.Palette ps) (C.NamedColour n) = Just $ LeftSub (i+1) c
---   | Just (RightSub i c) <- bindColour (C.Palette ps) (C.NamedColour n) = Just $ RightSub (i+1) c
---   | otherwise = Nothing
 
 bindColour :: C.Palette -> C.Ident -> Maybe SlI
 bindColour C.OnePal col = Nothing
@@ -123,30 +81,6 @@ bindSlice pal (C.Slice cols) = mconcat <$> traverse (bindColour pal) cols
 
 bindUnit :: C.Palette -> C.Unit -> Maybe UnitI
 bindUnit = undefined
-
-
--- bindPalSubstPiece :: C.Palette -> Bindings -> C.SubstPiece -> SubstPiece
--- bindPalSubstPiece pal env (C.TensorPalSub slL _ psL slR _ psR)
---   = TensorPalSub (fromJust $ bindSlice pal slL) (bindPalSubst pal env psL) (fromJust $ bindSlice pal slR) (bindPalSubst pal env psR)
-
--- bindPalSubst :: C.Palette -> Bindings -> C.PaletteSubst -> PaletteSubst
--- bindPalSubst pal env (C.PaletteSubst ps) = PaletteSubst $ fmap (bindPalSubstPiece pal env) ps
-
--- bindTele :: C.Palette -> Bindings -> C.Palette -> [(C.Ident, C.Colour, C.Ty)] -> State SymCounter [(ColourIndex, S.Ty)]
--- bindTele pal env psi [] = return []
--- bindTele pal env psi ((n,c,ty):cs) = do
---   boundty <- bind (C.palRestrict (C.palExtend psi pal) (C.Slice [c])) env ty
---   let boundc = fromJust $ bindColour psi c
-
---   rest <- bindTele pal (bindsExt env (Just n)) psi cs
-
---   return $ (boundc, boundty):rest
-
--- bindTeleSubst :: C.Palette -> Bindings -> C.TeleSubst -> State SymCounter S.TeleSubst
--- bindTeleSubst pal env (C.TeleSubst kappa as) = do
---   ts <- mapM (bind pal env) as
---   return $ S.TeleSubst (bindPalSubst pal env kappa) ts
-
 
 type SymCounter = Int
 
@@ -210,54 +144,6 @@ bind pal env t@(C.TensorPair slL a slR b) = do
   boundb <- bind pal env b
 
   return $ S.TensorPair (fromJust $ bindSlice pal slL') bounda (fromJust $ bindSlice pal slR') boundb
-
--- bind pal env (C.TensorElimFrob psi omega theta z mot (x, xc) (y, yc) br) = do
---   xc' <- case xc of
---            Just xc -> pure xc
---            Nothing -> genColLike x
---   yc' <- case yc of
---            Just yc -> pure yc
---            Nothing -> genColLike y
-
---   let zIdx = fromJust $ findIndex (\(n,_,_) -> n == z) omega
---       zCol = (\(_,c,_) -> c) $ fromJust $ find (\(n,_,_) -> n == z) omega
---       (before, _:after) = splitAt zIdx omega
-
---   let motomega = fmap (\(n, c, ty) -> BindTerm (Just n) c) omega
-
---   boundmot <- bind (C.palExtend psi pal) (bindsExtTele env motomega) mot
-
---   let bromega = fmap (\(n, c, ty) -> BindTerm (Just n) c) before
---                 ++ [(BindTerm (Just x) (C.NamedColour xc')), (BindTerm (Just y) (C.NamedColour yc'))]
---                 ++ fmap (\(n, c, ty) -> BindTerm (Just n) c) after
-
---   boundtheta <- bindTeleSubst pal env theta
---   boundbr <- bind (C.palExtend (C.palAddTensor psi zCol (xc', yc')) pal) (bindsExtTele env bromega) br
-
---   boundomega <- bindTele pal env psi omega
-
---   return $ S.TensorElimFrob
---       (bindPal psi)
---       boundomega
---       boundtheta
---       zIdx
---       boundmot
---       boundbr
-
--- bind pal@(C.Palette cpals) env (C.TensorElim s z mot (x, xc) (y, yc) c) = do
---   xc' <- case xc of
---            Just xc -> pure xc
---            Nothing -> genColLike x
---   yc' <- case yc of
---            Just yc -> pure yc
---            Nothing -> genColLike y
-
-  -- bounds <- bind pal env s
-  -- boundbr <- bind (C.Palette $ (C.palLoneTensor (xc', yc')):cpals) (bindsExtTele env [(BindTerm (Just x) (C.NamedColour xc')), (BindTerm (Just y) (C.NamedColour yc'))]) c
-
-  -- boundmot <- bind pal (bindsExt env z) mot
-
-  -- return $ S.TensorElim bounds boundmot boundbr
 
 bind pal env (C.HomLam bodyc yc y body) = do
   bodyc' <- case bodyc of

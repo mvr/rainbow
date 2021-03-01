@@ -8,24 +8,6 @@ data Palette where
   UnitPal :: Palette
   deriving (Show, Eq)
 
--- cleverCommaPal :: Palette -> Palette -> Palette
--- -- Note: We don't want to cancel the origin one
--- cleverCommaPal OnePal p = p
--- cleverCommaPal p OnePal = p
--- cleverCommaPal p q = CommaPal p q
-
--- palSize :: Palette -> Int
--- palSize (Palette ps) = length ps
-
--- data ColI where -- DeBruijn indices for colours
---   TopColI :: ColI
---   LeftColI :: ColI -- The colour exactly here on the left of a tensor.
---   RightColI :: ColI
---   LeftCommaColI :: ColI -> ColI
---   RightCommaColI :: ColI -> ColI
---   LeftTensorColI :: ColI -> ColI
---   RightTensorColI :: ColI -> ColI
---   deriving (Show, Eq)
 
 data Choice a = Yes | No | Sub a
   deriving (Show, Eq, Functor)
@@ -48,12 +30,6 @@ data SlI where
   TensorSl :: Choice SlI -> Choice SlI -> SlI
   deriving (Show, Eq)
 
--- cleverTensor :: SlI -> SlI -> SlI
--- cleverTensor BotSlI s = s
--- cleverTensor s BotSlI = s
--- cleverTensor sl sr = TensorSlI sl sr
-
-
 -- This combining operation like the tensor internal to a
 -- fixed palette.
 instance Semigroup SlI where
@@ -68,18 +44,6 @@ instance Semigroup SlI where
 
 instance Monoid SlI where
   mempty = OneSl
-
--- colourToSlice :: ColI -> SlI
--- colourToSlice TopColI       = TopSl
--- colourToSlice LeftColI      = TensorSl Yes No
--- colourToSlice RightColI      = TensorSl No Yes
--- colourToSlice (LeftCommaColI s) = LeftCommaSl (colourToSlice s)
--- colourToSlice (RightCommaColI s) = RightCommaSl (colourToSlice s)
--- colourToSlice (LeftTensorColI s)  = TensorSl (Sub $ colourToSlice s) No
--- colourToSlice (RightTensorColI s) = TensorSl No (Sub $ colourToSlice s)
-
--- colourUsableIn :: ColI -> SlI -> Bool
--- colourUsableIn = undefined
 
 -- FIXME: incomplete
 weakenableTo :: SlI -> SlI -> Bool
@@ -105,44 +69,6 @@ weakenableTo (CommaSl l1 r1) (CommaSl l2 r2) = cchoice l1 l2 && cchoice r1 r2
         cchoice _ _ = False
 weakenableTo SummonedUnitSl SummonedUnitSl = True
 weakenableTo l r = error $ "Unhandled " ++ show (l, r)
-
--- palRestrict :: Palette -> SlI -> Palette
--- palRestrict _ BotSlI = OriginPal
--- palRestrict p TopSlI = p
--- palRestrict (CommaPal pl _) (LeftCommaSlI s) = palRestrict pl s
--- palRestrict (CommaPal _ pr) (RightCommaSlI s) = palRestrict pr s
--- palRestrict (TensorPal pl pr) (TensorSlI Yes No) = pl
--- palRestrict (TensorPal pl pr) (TensorSlI No Yes) = pr
--- palRestrict (TensorPal pl pr) (TensorSlI (Sub sl) Yes) = TensorPal (palRestrict pl sl) pr
--- palRestrict (TensorPal pl pr) (TensorSlI Yes (Sub sr)) = TensorPal pl (palRestrict pr sr)
--- palRestrict (TensorPal pl pr) (TensorSlI (Sub sl) No) = palRestrict pl sl
--- palRestrict (TensorPal pl pr) (TensorSlI No (Sub sr)) = palRestrict pr sr
--- palRestrict (TensorPal pl pr) (TensorSlI (Sub sl) (Sub sr)) = TensorPal (palRestrict pl sl) (palRestrict pr sr)
-
--- -- The idea is, if `s2` is a slice of `palRestrict p s1`, then `sliceComp s1 s2` is a slice of `p`.
--- sliceComp :: SlI -> SlI -> SlI
--- sliceComp BotSlI s2 = BotSlI
--- sliceComp TopSlI s2 = s2
--- sliceComp (LeftCommaSlI s) s2 = LeftCommaSlI (sliceComp s s2)
--- sliceComp (RightCommaSlI s) s2 = RightCommaSlI (sliceComp s s2)
--- sliceComp (TensorSlI sl sr) (TensorSlI s2l s2r) = TensorSlI (choiceComp sl s2l) (choiceComp sr s2r)
-
--- choiceComp :: Choice SlI -> Choice SlI -> Choice SlI
--- choiceComp Yes No = No
-
--- colourRestrict :: ColI -> SlI -> Maybe ColI
--- -- colourRestrict c sl | traceShow (c, sl) False = undefined
--- colourRestrict c TopSlI = Just c
--- colourRestrict c BotSlI = Nothing
--- colourRestrict (LeftCommaColIx c) (LeftCommaSlI sl) = colourRestrict c sl
--- colourRestrict (RightCommaColIx c) (RightCommaSlI sl) = colourRestrict c sl
--- colourRestrict (LeftTensorColIx c) (TensorSlI sl BotSlI) = colourRestrict c sl
--- colourRestrict (LeftTensorColIx c) (TensorSlI BotSlI sr) = Nothing
--- colourRestrict (LeftTensorColIx c) (TensorSlI sl _) = LeftTensorColIx <$> colourRestrict c sl
--- colourRestrict (RightTensorColIx c) (TensorSlI sl BotSlI) = Nothing
--- colourRestrict (RightTensorColIx c) (TensorSlI BotSlI sr) = colourRestrict c sr
--- colourRestrict (RightTensorColIx c) (TensorSlI _ sr) = RightTensorColIx <$> colourRestrict c sr
--- colourRestrict _ _ = Nothing
 
 -- FIXME: incomplete
 validSplitOf :: SlI -> (SlI, SlI) -> Bool
@@ -181,30 +107,6 @@ data SlL = SlL Int SlI | SlEmpty
 data UnitL = UnitL Int UnitI
   deriving (Show, Eq)
 
--- data SlL where
---   UpSlL :: SlL -> SlL
-
---   BotSlL :: SlL
---   HereSlL :: SlL
-
---   LeftCommaSlL :: SlL -> SlL
---   RightCommaSlL :: SlL -> SlL
---   TensorSlL :: SlL -> SlL -> SlL
---   deriving (Show, Eq)
-
--- data UnitL where
---   UpUnitL :: UnitL -> UnitL
-
---   BotUnitL :: UnitL
-
---   HereUnitL :: UnitL
---   LeftCommaUnitL :: UnitL -> UnitL
---   RightCommaUnitL :: UnitL -> UnitL
---   LeftTensorUnitL :: UnitL -> UnitL
---   RightTensorUnitL :: UnitL -> UnitL
-
---   deriving (Show, Eq)
-
 data SemPal where
   OriginSemPal :: SemPal
   OneSemPal :: SemPal
@@ -218,12 +120,6 @@ palToSemPal = undefined
 
 instance Semigroup SlL where
 instance Monoid SlL where
-
--- cleverCommaSemPal :: SemPal -> SemPal -> SemPal
--- -- Note: We don't want to cancel the origin one
--- cleverCommaSemPal OneSemPal p = p
--- cleverCommaSemPal p OneSemPal = p
--- cleverCommaSemPal p q = CommaSemPal p q
 
 semPalTopSlice :: SemPal -> SlL
 semPalTopSlice pal = SlL (go pal) TopSl

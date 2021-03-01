@@ -139,12 +139,6 @@ evalPat env (TensorPat p q) = TensorVPat (evalPat env p) (PatClosure q env)
 doClosure :: Closure -> Value -> Value
 doClosure (Closure t (SemEnv pal env)) a = eval (SemEnv pal (a : env)) t
 
--- doClosure2 :: Closure2 -> Value -> Value -> Value
--- doClosure2 (Closure2 t env) a b = eval (b : a : env) t
-
--- doClosureT :: ClosureT -> [Value] -> Value
--- doClosureT (ClosureT t env) as = eval (reverse as ++ env) t -- Note reverse! -- TODO: let's not do this...
-
 doClosurePat :: ClosurePat -> SemTele -> Value
 doClosurePat (ClosurePat t env) env' = eval (semEnvComma env env') t
 
@@ -153,17 +147,6 @@ doClosurePat (ClosurePat t env) env' = eval (semEnvComma env env') t
 
 doPatClosure :: PatClosure -> [Value] -> VPat
 doPatClosure (PatClosure t env) env' = evalPat (semEnvExt env env') t
-
--- doPatHomClosure :: PatHomClosure -> SemEnv -> VPat
--- doPatHomClosure (PatHomClosure t env) env' = evalPat (semEnvComma env env') t
-
--- doTensorElim :: Closure -> Closure2 -> Value -> Value
--- doTensorElim mot br t | traceShow ("doing tensor elim on: " ++ show (mot, br, t)) False = undefined
--- doTensorElim mot br (VTensorPair a b) = doClosure2 br a b
--- doTensorElim mot br t@(VNeutral (VTensor aty bclo) ne) =
---   VNeutral (doClosure mot t) (NTensorElim mot br aty bclo ne)
--- doTensorElim mot br (VNeutral ty ne) = error $ "Unexpected neutral " ++ show ty ++ "in doTensorElim"
--- doTensorElim mot br t = error $ "Unexpected term " ++ show t ++ "in doTensorElim"
 
 eval :: SemEnv -> Term -> Value
 eval env (Var i) = envLookup env i
@@ -190,13 +173,6 @@ eval env (UndOut a) = doUndOut (eval env a)
 
 eval env (Tensor aty bty) = VTensor (eval env aty) (Closure bty env)
 eval env (TensorPair asl a bsl b) = VTensorPair (envLookupSlice env asl) (eval env a) (envLookupSlice env bsl) (eval env b)
--- eval env (TensorElim t mot branch) = doTensorElim (Closure mot env) (Closure2 branch env) (let r = eval env t in traceShow (t, r) r)
--- eval env (TensorElimFrob _ omega theta zidx mot br) =
---   let (beforeo, (_, zty):aftero) = splitAt zidx omega
---       beforetys = fmap (flip ClosureT env . snd) beforeo
---       aftertys = fmap (flip ClosureT env . snd) aftero
---       zclo = ClosureT zty env
---   in doTensorElimFrob (ClosureT mot env) (ClosureT br env) (beforetys, zclo, aftertys) (evalTeleSubAndDivide env zidx theta)
 eval env (Hom aty bty) = VHom (eval env aty) (Closure bty env)
 eval env (HomLam b) = undefined -- VHomLam (Closure b env)
 eval env (HomApp _ f _ a) = doHomApp (eval env f) (eval env a)

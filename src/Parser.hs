@@ -52,48 +52,6 @@ slice :: Parser Slice
 slice = try ( symbol "_" *> pure (Slice []) )
   <|> (Slice <$> many ident)
 
--- palettePiece :: Parser PalettePiece
--- palettePiece = do
---   symbol "("
---   r <- (Just <$> ident) <|> (pure Nothing <* char '_')
---   rp <- try (symbol "=" *> palette)
---         <|> pure (emptyPal)
---   tensorSym
---   b <- (Just <$> ident) <|> (pure Nothing <* char '_')
---   bp <- try (symbol "=" *> palette)
---         <|> pure (emptyPal)
---   symbol ")"
---   return $ TensorPal r rp b bp
-
--- palette :: Parser Palette
--- palette = Palette <$> (try (symbol "_" *> return []) <|> (palettePiece `sepBy1` (symbol ",")))
-
--- palSubstPiece = do
---   symbol "("
---   slr <- slice
---   symbol "/"
---   r <- ident
---   rtheta <- try (symbol "=" *> palSubst)
---             <|> pure (PaletteSubst [])
---   tensorSym
---   slb <- slice
---   symbol "/"
---   b <- ident
---   btheta <- try (symbol "=" *> palSubst)
---             <|> pure (PaletteSubst [])
---   symbol ")"
---   return $ TensorPalSub slr r rtheta slb b btheta
-
--- palSubst :: Parser PaletteSubst
--- palSubst = try (symbol "_" *> pure (PaletteSubst []))
---   <|> PaletteSubst <$>  palSubstPiece `sepBy1` (symbol ",")
-
--- telesubst :: Parser TeleSubst
--- telesubst = do
---   ps <- palettesubst
---   symbol "#"
---   args <- sepBy mark (symbol ",")
-
 -- colour :: Parser Colour
 -- colour = try (symbol "⊤" *> pure ())
 
@@ -101,11 +59,6 @@ slice = try ( symbol "_" *> pure (Slice []) )
 -- atomicTy = BaseTy <$> ident
 --            <|> try (symbol "(" *> ty <* symbol ")")
 --            <|> Und <$> (symbol "♮" *> ty)
-
--- ty :: Parser Ty
--- ty =
---   <|> try (symbol "(" *> ty <* symbol ")")
---   <|> BaseTy <$> ident
 
 teleCell :: Parser TeleCell
 teleCell = do
