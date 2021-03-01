@@ -73,8 +73,7 @@ weakenableTo l r = error $ "Unhandled " ++ show (l, r)
 -- FIXME: incomplete
 validSplitOf :: SlI -> (SlI, SlI) -> Bool
 validSplitOf OneSl (OneSl, OneSl) = True
-validSplitOf TopSl (TensorSl Yes No, TensorSl No Yes) = True
-validSplitOf TopSl (TensorSl No Yes, TensorSl Yes No) = True
+validSplitOf TopSl (TensorSl ll lr, TensorSl rl rr) = validTensorSplitOf Yes (ll, rl) && validTensorSplitOf Yes (lr, rr)
 validSplitOf (TensorSl l r) (TensorSl ll lr, TensorSl rl rr) = validTensorSplitOf l (ll, rl) && validTensorSplitOf r (lr, rr)
 validSplitOf (CommaSl _ s) (CommaSl No l, CommaSl No r) = validCommaSplitOf s (l, r)
 validSplitOf (CommaSl s _) (CommaSl l No, CommaSl r No) = validCommaSplitOf s (l, r)
@@ -91,6 +90,8 @@ validTensorSplitOf Yes (No, Yes) = True
 validTensorSplitOf No (No, No) = True
 validTensorSplitOf Yes (Sub l, Sub r) = validSplitOf TopSl (l, r)
 validTensorSplitOf (Sub s) (Sub l, Sub r) = validSplitOf s (l, r)
+validTensorSplitOf (Sub s) (No, Sub r) = weakenableTo r s
+validTensorSplitOf (Sub s) (Sub l, No) = weakenableTo l s
 validTensorSplitOf _ _ = False
 
 data UnitI where

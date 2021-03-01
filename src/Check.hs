@@ -176,7 +176,7 @@ check s t@(TensorPair asl a bsl b) (VTensor aty bclo) = do
   -- e <- ask
   -- traceShow e $ return ()
 
-  when (not $ validSplitOf s (asl, bsl)) $ throwError "Invalid split"
+  when (not $ validSplitOf s (asl, bsl)) $ throwError $ "Invalid split of " ++ show s ++ " into " ++ show (asl, bsl)
 
   check asl a aty
   semEnv <- asks ctxToEnv
