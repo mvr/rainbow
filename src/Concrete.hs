@@ -51,13 +51,6 @@ sliceUnion (Slice l) (Slice r) = Slice $ l ++ r
 data Unit where
   deriving (Show, Eq)
 
--- data Slice where
---   OneSl :: Slice
---   IdentSl :: Ident -> Slice -> Slice
---   CommaSl :: Slice -> Slice -> Slice
---   TensorSl :: Slice -> Slice -> Slice
---   deriving (Show, Eq)
-
 data TeleCell = TeleCell (Maybe Ident) Ty
   deriving (Show)
 
@@ -101,23 +94,6 @@ data Term where
            -> {- pat -}    Term -- Type of the target can be recovered from this
            -> {- branch -} Term
            -> Term
-
-  -- TensorElim :: Term
-  --   -> {- motive var -} Maybe Ident -> {- motive -} Ty
-  --   -> {- new left var and col -} (Ident, Maybe Ident)
-  --   -> {- new right var and col -} (Ident, Maybe Ident)
-  --   -> {- branch -} Term
-  --   -> Term
-
-  -- TensorElimFrob :: Palette
-  --   -> {- Var names and their colours variables -} [(Ident, Colour, Ty)]
-  --   -> TeleSubst
-  --   -> {- which var in tele -} Ident
-  --   -> {- motive -} Ty
-  --   -> {- new left var and col -} (Ident, Maybe Ident)
-  --   -> {- new right var and col -} (Ident, Maybe Ident)
-  --   -> {- branch -} Term
-  --   -> Term
 
   HomLam :: {- body colour -} Maybe Ident -> {- var colour -} Maybe Ident -> {- var name -} Ident -> Term -> Term
   HomApp :: Maybe Slice -> Term -> Maybe Slice -> Term -> Term

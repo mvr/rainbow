@@ -90,8 +90,6 @@ data Term where
 
   Id :: Ty -> Term -> Term -> Ty
   Refl :: Term -> Term
-  -- IdElimSimple ::
-  -- IdElim :: Palette -> [(ColourIndex, Ty)] -> TeleSubst -> {- which var in tele -} Int -> {- motive -} Ty -> {- branch -} Term -> Term
 
   Und :: Ty -> Ty
   UndIn :: Term -> Term
