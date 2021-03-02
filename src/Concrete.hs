@@ -3,39 +3,9 @@ module Concrete where
 import Data.Maybe (mapMaybe)
 import Data.List (nub)
 
+-- Let's try to keep this in exact correspondence with the surface syntax.
+
 type Ident = String
-
-data Palette where
-  CommaPal :: Palette -> Palette -> Palette
-  OnePal :: Palette
-  OriginPal :: Palette
-  TensorPal :: Palette -> Palette -> Palette
-  UnitPal :: Ident -> Palette
-  LabelPal :: Ident -> Palette -> Palette
-  deriving (Show)
-
--- emptyPal :: Palette
--- emptyPal = OnePal
-
--- palExtend :: Palette -> Palette -> Palette
--- palExtend (Palette p1) (Palette p2) = Palette (p1 ++ p2)
-
--- palLoneTensor :: (Ident, Ident) -> PalettePiece
--- palLoneTensor (r, b) = TensorPal (Just r) emptyPal (Just b) emptyPal
-
--- data Colour where
---   NamedColour :: Ident -> Colour
---   ZeroColour :: Colour
---   TopColour :: Colour
---   deriving (Eq, Show)
-
--- palExtHom :: Palette -> Maybe Ident -> Maybe Ident -> Palette
--- palExtHom pal bodyc yc = Palette [TensorPal bodyc pal yc emptyPal]
-
--- colExtHom :: {- body colour -} Ident -> Colour -> Colour
--- colExtHom bodyc TopColour = NamedColour bodyc
--- colExtHom bodyc (NamedColour n) = NamedColour n
--- colExtHom bodyc ZeroColour = ZeroColour
 
 -- FIXME: Let's try this first, a slice is specified by a list of colour labels that are tensored together.
 data Slice where
@@ -45,8 +15,7 @@ data Slice where
   SliceTop :: Slice
   deriving (Show, Eq)
 
-sliceUnion :: Slice -> Slice -> Slice
-sliceUnion (Slice l) (Slice r) = Slice $ l ++ r
+
 
 data Unit where
   deriving (Show, Eq)
@@ -68,7 +37,7 @@ data Term where
   Und :: Ty -> Ty
 
   Tensor :: Maybe Ident -> Ty -> Ty -> Ty
-  Hom :: {- variable -} Maybe Ident -> {- var col -} Maybe Ident -> Ty -> {- ambient col -} Maybe Ident -> Ty -> Ty
+  Hom :: {- body col -} Maybe Ident ->{- var col -} Maybe Ident -> {- var name -} Maybe Ident -> Ty -> Ty -> Ty
 
   Var :: Ident -> Term
   ZeroVar :: Ident -> Term
@@ -108,7 +77,7 @@ data Pat where
   ZeroVarPat :: Ident -> Ty -> Pat
   UndInPat :: Pat -> Pat
   PairPat :: Pat -> Pat -> Pat
-  TensorPat :: Ident -> Pat -> Ident -> Pat -> Pat
+  TensorPat :: Maybe Ident -> Pat -> Maybe Ident -> Pat -> Pat
   ZeroTensorPat :: Pat -> Pat -> Pat
   deriving (Show)
 
@@ -119,18 +88,12 @@ comprehendPat t = go False t -- Have we been zeroed by an UndIn yet?
     go True (Check (ZeroVar x) ty) = Just $ ZeroVarPat x ty
     go f OneIn = Just $ OnePat
     go f (Pair x y) = PairPat <$> go f x <*> go f y
-    go False (TensorPair (Just (Slice [l])) x (Just (Slice [r])) y) = TensorPat <$> pure l <*> go False x <*> pure r <*> go False y
+    go False (TensorPair lc x rc y) = TensorPat <$> pure (comprehendCol lc) <*> go False x <*> pure (comprehendCol rc) <*> go False y
+      where comprehendCol (Just (Slice [c])) = Just c
+            comprehendCol Nothing = Nothing
     go True (TensorPair (Just SliceOne) x (Just SliceOne) y) = ZeroTensorPat <$> go True x <*> go True y
     go f (UndIn u) = UndInPat <$> go True u
     go _ _ = Nothing
-
-patPalette :: Pat -> Palette
-patPalette OnePat = OnePal
-patPalette (VarPat _ _) = OnePal
-patPalette (UnitPat u) = UnitPal u
-patPalette (PairPat p q) = CommaPal (patPalette p) (patPalette q)
-patPalette (TensorPat sl p sr q) = TensorPal (LabelPal sl (patPalette p)) (LabelPal sr (patPalette q))
-patPalette (UndInPat p) = OnePal
 
 data Decl where
   Def :: Ident -> Term -> Ty -> Decl

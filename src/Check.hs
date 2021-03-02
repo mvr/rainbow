@@ -92,8 +92,8 @@ ctxExtHom = undefined
 -- patCartTele :: Pat -> (Palette, [CtxEntry])
 -- patCartTele = undefined
 
-cartWkEntry :: CtxEntry -> CtxEntry
-cartWkEntry = undefined
+-- cartWkEntry :: CtxEntry -> CtxEntry
+-- cartWkEntry = undefined
 
 -- ctxExtCartPat :: Pat -> SemCtx -> SemCtx
 -- ctxExtCartPat pat (SemCtx pal vars) = let (palext, ctxext) = patCartTele pat in

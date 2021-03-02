@@ -17,7 +17,6 @@ checkFile fn = do
     Right decls -> return decls
 
   -- putStrLn $ show decls
-
   foldM processDecl D.emptyEnv decls
 
   return ()

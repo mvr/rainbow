@@ -10,20 +10,67 @@ import Data.List (findIndex, find)
 import Data.Maybe (fromJust, fromMaybe)
 
 import qualified Concrete as C
+import qualified Palette as S
 import qualified Syntax as S
 import qualified Check as S
 import qualified Normalize as N
-import Palette
+
+data Colour where
+  NamedCol :: C.Ident -> Colour
+  GenSymCol :: Int -> Colour
+  deriving (Show, Eq)
+
+data Slice where
+  Slice :: [Colour] -> Slice
+  SliceOne :: Slice
+  SliceTop :: Slice
+  deriving (Show, Eq)
+
+providedSlice :: C.Slice -> Slice
+providedSlice (C.Slice cs) = Slice $ fmap NamedCol cs
+providedSlice (C.SliceOne) = SliceOne
+providedSlice (C.SliceTop) = SliceTop
+
+sliceUnion :: Slice -> Slice -> Slice
+sliceUnion (Slice l) (Slice r) = Slice $ l ++ r
+
+data BindPalette where
+  CommaPal :: BindPalette -> BindPalette -> BindPalette
+  OnePal :: BindPalette
+  OriginPal :: BindPalette
+  TensorPal :: BindPalette -> BindPalette -> BindPalette
+  UnitPal :: C.Ident -> BindPalette
+  LabelPal :: Colour -> BindPalette -> BindPalette
+  deriving (Show)
+
+data BindPat where
+  OnePat :: BindPat
+  UnitPat :: C.Ident -> BindPat
+  VarPat :: C.Ident -> C.Ty -> BindPat
+  ZeroVarPat :: C.Ident -> C.Ty -> BindPat
+  UndInPat :: BindPat -> BindPat
+  PairPat :: BindPat -> BindPat -> BindPat
+  TensorPat :: Colour -> BindPat -> Colour -> BindPat -> BindPat
+  ZeroTensorPat :: BindPat -> BindPat -> BindPat
+  deriving (Show)
+
+patPalette :: BindPat -> BindPalette
+patPalette OnePat = OnePal
+patPalette (VarPat _ _) = OnePal
+patPalette (UnitPat u) = UnitPal u
+patPalette (PairPat p q) = CommaPal (patPalette p) (patPalette q)
+patPalette (TensorPat sl p sr q) = TensorPal (LabelPal sl (patPalette p)) (LabelPal sr (patPalette q))
+patPalette (UndInPat p) = OnePal
 
 -- The name is optional so we can conveniently write
 -- e.g. non-dependent sums and products
-data BindEntry = BindTerm {- name -} (Maybe C.Ident) {- colour -} (Maybe C.Ident)
+data BindEntry = BindTerm {- name -} (Maybe C.Ident) {- colour -} (Maybe Colour)
                | BindTopLevel C.Ident
   deriving (Show)
 
 type SymCounter = Int
-data BindState = BindState { symCounter :: SymCounter, bindPalette :: C.Palette, binds :: [BindEntry] }
-type BindM = Reader BindState
+data BindState = BindState {  bindPalette :: BindPalette, binds :: [BindEntry] }
+type BindM = ReaderT BindState (State SymCounter)
 
 bindsLookup :: C.Ident -> BindM Int
 bindsLookup name = do
@@ -35,7 +82,7 @@ bindsLookup name = do
     Just i -> return i
     Nothing -> error $ "Unbound variable " ++ name
 
-bindsLookupColour :: C.Ident -> BindM (Maybe C.Ident)
+bindsLookupColour :: C.Ident -> BindM (Maybe Colour)
 bindsLookupColour name = do
   vars <- asks binds
   case find (\be -> case be of
@@ -45,119 +92,122 @@ bindsLookupColour name = do
     (Just (BindTerm _ (Just c))) -> return (Just c)
     _ -> return Nothing
 
--- bindsExt :: [BindEntry] -> Maybe C.Ident -> [BindEntry]
--- bindsExt  }) name = binds { bindVars = (BindTerm name):bindVars }
-
--- bindsExtMany :: [BindEntry] -> [BindEntry] -> [BindEntry]
--- bindsExtMany
-
-guessSlice :: C.Term -> BindM C.Slice
+guessSlice :: C.Term -> BindM Slice
 guessSlice (C.Check a ty) = guessSlice a
 guessSlice (C.Var name) = do
   c <- bindsLookupColour name
   case c of
-    Just c -> return $ C.Slice [c]
-    Nothing -> return $ C.SliceOmitted
-guessSlice (C.ZeroVar name) = pure $ C.Slice []
-guessSlice (C.Univ i) = pure $ C.Slice []
+    Just c -> return $ Slice [c]
+    Nothing -> return $ Slice []
+guessSlice (C.ZeroVar name) = pure $ Slice []
+guessSlice (C.Univ i) = pure $ Slice []
 guessSlice (C.Lam name t) = guessSlice t
 guessSlice (C.App f []) = guessSlice f
-guessSlice (C.App f args) = C.sliceUnion <$> guessSlice (C.App f (init args)) <*> guessSlice (last args)
-guessSlice (C.Pair a b) = C.sliceUnion <$> (guessSlice a) <*> (guessSlice b)
+guessSlice (C.App f args) = sliceUnion <$> guessSlice (C.App f (init args)) <*> guessSlice (last args)
+guessSlice (C.Pair a b) = sliceUnion <$> (guessSlice a) <*> (guessSlice b)
 guessSlice (C.Fst p) = guessSlice p
 guessSlice (C.Snd p) = guessSlice p
 guessSlice (C.UndIn a) = guessSlice a
 guessSlice (C.UndOut a) = guessSlice a
-guessSlice (C.TensorPair slL a slR b) = C.sliceUnion <$> (guessSlice a) <*> (guessSlice b)
+guessSlice (C.TensorPair slL a slR b) = sliceUnion <$> (guessSlice a) <*> (guessSlice b)
 guessSlice (C.HomLam bodyc yc y body) = guessSlice body
-guessSlice (C.HomApp slL f slR a) = C.sliceUnion <$> (guessSlice f) <*> (guessSlice a)
+guessSlice (C.HomApp slL f slR a) = sliceUnion <$> (guessSlice f) <*> (guessSlice a)
 
-bindColour :: C.Palette -> C.Ident -> Maybe SlI
-bindColour C.OnePal col = Nothing
-bindColour C.OriginPal col = Nothing
-bindColour (C.UnitPal _) col = Nothing
-bindColour (C.LabelPal i s) col
-  | i == col = Just TopSl
+bindColour :: BindPalette -> Colour -> Maybe S.SlI
+bindColour OnePal col = Nothing
+bindColour OriginPal col = Nothing
+bindColour (UnitPal _) col = Nothing
+bindColour (LabelPal i s) col
+  | i == col = Just S.TopSl
   | otherwise = bindColour s col
-bindColour (C.CommaPal l r) col =
+bindColour (CommaPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
-    (Nothing, Just TopSl) -> Just (CommaSl No Yes)
-    (Just TopSl, Nothing) -> Just (CommaSl Yes No)
-    (Nothing, Just r) -> Just (CommaSl No (Sub r))
-    (Just l, Nothing) -> Just (CommaSl (Sub l) No)
-bindColour (C.TensorPal l r) col =
+    (Nothing, Just S.TopSl) -> Just (S.CommaSl S.No S.Yes)
+    (Just S.TopSl, Nothing) -> Just (S.CommaSl S.Yes S.No)
+    (Nothing, Just r) -> Just (S.CommaSl S.No (S.Sub r))
+    (Just l, Nothing) -> Just (S.CommaSl (S.Sub l) S.No)
+bindColour (TensorPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
-    (Nothing, Just TopSl) -> Just (TensorSl No Yes)
-    (Just TopSl, Nothing) -> Just (TensorSl Yes No)
-    (Nothing, Just r) -> Just (TensorSl No (Sub r))
-    (Just l, Nothing) -> Just (TensorSl (Sub l) No)
+    (Nothing, Just S.TopSl) -> Just (S.TensorSl S.No S.Yes)
+    (Just S.TopSl, Nothing) -> Just (S.TensorSl S.Yes S.No)
+    (Nothing, Just r) -> Just (S.TensorSl S.No (S.Sub r))
+    (Just l, Nothing) -> Just (S.TensorSl (S.Sub l) S.No)
 
-bindSlice :: C.Slice -> BindM (Maybe SlI)
-bindSlice (C.Slice cols) = do
+bindSlice :: Slice -> BindM (Maybe S.SlI)
+bindSlice (Slice cols) = do
   pal <- asks bindPalette
   return $ mconcat <$> traverse (bindColour pal) cols
-bindSlice (C.SliceOne) = return $ Just OneSl
+bindSlice (SliceOne) = return $ Just S.OneSl
 
-bindUnit :: C.Palette -> C.Unit -> Maybe UnitI
+bindUnit :: BindPalette -> C.Unit -> Maybe S.UnitI
 bindUnit = undefined
 
 bindsExtLam :: Maybe C.Ident -> BindState -> BindState
 bindsExtLam n state@(BindState { binds }) = state { binds = (BindTerm n Nothing):binds }
 
-bindsExtHom :: Maybe C.Ident -> Maybe C.Ident -> Maybe C.Ident -> BindState -> BindState
-bindsExtHom n nc ac state@(BindState { binds, bindPalette })
-  = state { bindPalette = pal nc ac,
-            binds = (BindTerm n nc):binds }
-  where pal Nothing Nothing = C.TensorPal bindPalette C.OnePal
-        pal Nothing (Just ac) = C.TensorPal (C.LabelPal ac bindPalette) C.OnePal
-        pal (Just nc) Nothing = C.TensorPal bindPalette (C.LabelPal nc C.OnePal)
-        pal (Just nc) (Just ac) = C.TensorPal (C.LabelPal ac bindPalette) (C.LabelPal nc C.OnePal)
+bindsExtHom :: Colour -> Colour -> Maybe C.Ident -> BindState -> BindState
+bindsExtHom bodyc yc y state@(BindState { binds, bindPalette })
+  = state { bindPalette = TensorPal (LabelPal bodyc bindPalette) (LabelPal yc OnePal),
+            binds = (BindTerm y (Just yc)):binds }
 
 bindsExtMany :: [BindEntry] -> BindState -> BindState
 bindsExtMany ns state@(BindState { binds }) = state { binds = ns ++ binds }
 
-bindsExtCommaPal :: C.Palette -> BindState -> BindState
+bindsExtCommaPal :: BindPalette -> BindState -> BindState
 bindsExtCommaPal pal state@(BindState { bindPalette })
-  = state { bindPalette = C.CommaPal bindPalette pal }
+  = state { bindPalette = CommaPal bindPalette pal }
 
+genCol :: BindM Colour
+genCol = do
+  i <- get
+  put (i+1)
+  return $ GenSymCol i
 
+fillPatCols :: C.Pat -> BindM BindPat
+fillPatCols (C.OnePat) = pure OnePat
+fillPatCols (C.UnitPat u) = pure (UnitPat u)
+fillPatCols (C.VarPat x ty) = pure (VarPat x ty)
+fillPatCols (C.ZeroVarPat x ty) = pure (ZeroVarPat x ty)
+fillPatCols (C.UndInPat p) = UndInPat <$> fillPatCols p
+fillPatCols (C.PairPat p q) = PairPat <$> fillPatCols p <*> fillPatCols q
+fillPatCols (C.TensorPat l p r q) = do
+  l' <- case l of
+           Just c -> pure (NamedCol c)
+           Nothing -> genCol
+  r' <- case r of
+           Just c -> pure (NamedCol c)
+           Nothing -> genCol
+  TensorPat <$> pure l' <*> fillPatCols p <*> pure r' <*> fillPatCols q
 
-
--- genColLike :: C.Ident -> BindM C.Ident
--- genColLike n = do
---   i <- asks symCounter
---   put (i+1)
---   return $ "?" ++ n ++ show ix
-
-patVars :: C.Pat -> [BindEntry]
+patVars :: BindPat -> [BindEntry]
 patVars p = go Nothing p
   where
-  go c C.OnePat = []
-  go c (C.UnitPat _) = []
-  go c (C.VarPat x _) = [BindTerm (Just x) c]
-  go c (C.ZeroVarPat x _) = [BindTerm (Just x) Nothing]
-  go c (C.PairPat p q) = go c q ++ go c p
-  go c (C.TensorPat l p r q) = go (Just r) q ++ go (Just l) p
-  go c (C.UndInPat p) = go Nothing p
+  go c OnePat = []
+  go c (UnitPat _) = []
+  go c (VarPat x _) = [BindTerm (Just x) c]
+  go c (ZeroVarPat x _) = [BindTerm (Just x) Nothing]
+  go c (PairPat p q) = go c q ++ go c p
+  go c (TensorPat l p r q) = go (Just r) q ++ go (Just l) p
+  go c (UndInPat p) = go Nothing p
 
-bindPat :: C.Pat -> BindM S.Pat
-bindPat (C.OnePat) = pure S.OnePat
-bindPat (C.UnitPat _) = pure S.UnitPat
-bindPat (C.VarPat _ ty) = S.VarPat <$> bind ty
-bindPat (C.ZeroVarPat _ ty) = S.ZeroVarPat <$> bind ty
-bindPat (C.UndInPat p) = S.UndInPat <$> bindPat p
-bindPat (C.PairPat p q) = do
+bindPat :: BindPat -> BindM S.Pat
+bindPat (OnePat) = pure S.OnePat
+bindPat (UnitPat _) = pure S.UnitPat
+bindPat (VarPat _ ty) = S.VarPat <$> bind ty
+bindPat (ZeroVarPat _ ty) = S.ZeroVarPat <$> bind ty
+bindPat (UndInPat p) = S.UndInPat <$> bindPat p
+bindPat (PairPat p q) = do
   p' <- bindPat p
   q' <- local (bindsExtMany (patVars p)) $ bindPat q
   return $ S.PairPat p' q'
-bindPat (C.TensorPat _ p _ q) = do
+bindPat (TensorPat _ p _ q) = do
   p' <- bindPat p
   q' <- local (bindsExtMany (patVars p)) $ bindPat q
 
   return $ S.TensorPat p' q'
-bindPat (C.ZeroTensorPat p q) = do
+bindPat (ZeroTensorPat p q) = do
   p' <- bindPat p
   q' <- local (bindsExtMany (patVars p)) $ bindPat q
   return $ S.TensorPat p' q'
@@ -182,15 +232,22 @@ bind (C.Sg [] b) = bind b
 bind (C.Sg (C.TeleCell n ty : cells) b) = S.Sg <$> (bind ty) <*> (local (bindsExtLam n) $ bind (C.Sg cells b))
 bind (C.Und a) = S.Und <$> bind a
 bind (C.Tensor n a b) = S.Tensor <$> bind a <*> local (bindsExtLam n ) (bind b)
-bind (C.Hom n nc a ambc b) = S.Hom <$> bind a <*> local (bindsExtHom n nc ambc) (bind b)
+bind (C.Hom bodyc yc y a b) = do
+  bodyc' <- case bodyc of
+           Just c -> pure (NamedCol c)
+           Nothing -> genCol
+  yc' <- case yc of
+           Just c -> pure (NamedCol c)
+           Nothing -> genCol
+  S.Hom <$> bind a <*> local (bindsExtHom bodyc' yc' y) (bind b)
 
 bind t@(C.TensorPair sl a sr b) = do
   sl' <- case sl of
     Nothing -> guessSlice a
-    (Just sl) -> pure sl
+    (Just sl) -> pure (providedSlice sl)
   sr' <- case sr of
     Nothing -> guessSlice b
-    (Just sr) -> pure sr
+    (Just sr) -> pure (providedSlice sr)
   boundsl <- bindSlice sl'
   boundsr <- bindSlice sr'
 
@@ -200,16 +257,22 @@ bind t@(C.TensorPair sl a sr b) = do
   return $ S.TensorPair (fromJust $ boundsl) bounda (fromJust $ boundsr) boundb
 
 bind (C.HomLam bodyc yc y body) = do
-  boundbody <- local (bindsExtHom (Just y) yc bodyc) $ bind body
+  bodyc' <- case bodyc of
+           Just c -> pure (NamedCol c)
+           Nothing -> genCol
+  yc' <- case yc of
+           Just c -> pure (NamedCol c)
+           Nothing -> genCol
+  boundbody <- local (bindsExtHom bodyc' yc' (Just y)) $ bind body
   return $ S.HomLam boundbody
 
 bind (C.HomApp sl f sr a) = do
   sl' <- case sl of
     Nothing -> guessSlice f
-    (Just sl) -> pure sl
+    (Just sl) -> pure (providedSlice sl)
   sr' <- case sr of
     Nothing -> guessSlice a
-    (Just sr) -> pure sr
+    (Just sr) -> pure (providedSlice sr)
   boundsl <- bindSlice sl'
   boundsr <- bindSlice sr'
 
@@ -226,13 +289,14 @@ bind (C.Match t z mot patterm br) = do
   boundt <- bind t
 
   let pat = fromJust $ C.comprehendPat patterm
+  pat' <- fillPatCols pat
 
   boundmot <- local (bindsExtLam z) $ bind mot
 
-  let patpal = C.patPalette pat
-  boundpat <- local (bindsExtCommaPal patpal) $ bindPat pat
+  let patpal = patPalette pat'
+  boundpat <- local (bindsExtCommaPal patpal) $ bindPat pat'
 
-  boundbr <- local (bindsExtCommaPal patpal . bindsExtMany (patVars pat)) $ bind br
+  boundbr <- local (bindsExtCommaPal patpal . bindsExtMany (patVars pat')) $ bind br
 
   return $ S.Match boundt boundmot boundpat boundbr
 
@@ -240,17 +304,17 @@ data Env = Env { envBindings :: [BindEntry], envCheckCtx :: S.SemCtx }
 
 processDecl :: Env -> C.Decl -> IO Env
 processDecl env@(Env bindings checkCtx) (C.Def name cbody cty) = do
-  let ty   = runReader (bind cty) (BindState 0 C.OriginPal bindings)
-  let body = runReader (bind cbody) (BindState 0 C.OriginPal bindings)
+  let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings)) 0
+  let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings)) 0
 
-  case S.runCheckM checkCtx $ S.checkTy TopSl ty of
+  case S.runCheckM checkCtx $ S.checkTy S.TopSl ty of
     Left err -> putStrLn $ "Error in type of " ++ name ++ ": " ++ err
     Right () -> return ()
 
   let semEnv = S.ctxToEnv checkCtx
   let semTy = N.eval semEnv ty
 
-  case S.runCheckM checkCtx $ S.check TopSl body semTy of
+  case S.runCheckM checkCtx $ S.check S.TopSl body semTy of
     Left err -> putStrLn $ "Error in: " ++ name ++ ": " ++ err
     Right () -> putStrLn $ "Checked: " ++ name
 
@@ -258,15 +322,18 @@ processDecl env@(Env bindings checkCtx) (C.Def name cbody cty) = do
 
   return (Env ((BindTopLevel name):bindings) (S.ctxExtGlobal semBody semTy checkCtx))
 
--- processDecl env@(Env binds checkEnv) (C.Dont name cbody cty) = do
---   let body = evalState (bind (C.Palette []) binds cbody) 0
---   let ty = bindTy binds cty
+processDecl env@(Env bindings checkCtx) (C.Dont name cbody cty) = do
+  let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings)) 0
+  let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings)) 0
 
---   case S.runCheckM checkEnv $ S.check body ty of
---     Left err -> putStrLn $ "Correctly failed: " ++ name ++ " because " ++ err
---     Right () -> putStrLn $ "Error: " ++ name ++ " should not have typechecked!"
+  let semEnv = S.ctxToEnv checkCtx
+  let semTy = N.eval semEnv ty
 
---   return env
+  case S.runCheckM checkCtx $ S.check S.TopSl body semTy of
+    Left err -> putStrLn $ "Correctly failed: " ++ name ++ " because " ++ err
+    Right () -> putStrLn $ "Error: " ++ name ++ " should not have typechecked!"
+
+  return env
 
 emptyEnv :: Env
 emptyEnv = Env [] S.ctxEmpty
