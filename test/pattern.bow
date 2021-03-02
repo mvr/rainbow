@@ -4,7 +4,7 @@ let id : (A : U<0>) -> (A -> A) =
 let sym : (A : U<0>) (B : U<0>) (p : _A ⊗ _B) -> (_B ⊗ _A) = 
   fun A B p -> 
   match p at _B ⊗ _A with
-    <<(x at _A), (y at _B)>>[r,b] -> <<y, x>>[b,r]
+    <<(x at _A), (y at _B)>>[r,b] -> <<y, x>>
 
 -- let lax : (A : U<0>) (B : _A -> U<0>) (n : ♮((x : _A) ⊗ _B _x)) -> (y : ♮ _A) * ♮ (_B (undout _y)) =
 --   fun A B n ->
@@ -22,5 +22,5 @@ let unlax : (A : U<0>) (B : _A -> U<0>) (m : (y : ♮ _A) * ♮ (_B (undout _y))
 let assoc : (A : U<0>) (B : U<0>) (C : U<0>) (p : _A ⊗ (_B ⊗ _C)) -> ((_A ⊗ _B) ⊗ _C) = 
   fun A B C p -> 
   match p at (_A ⊗ _B) ⊗ _C with
-    <<(x at _A), <<(y at _B), (z at _C)>>[b, yy]>>[r,g] -> << <<x, y>>[r, b], z >>[r b, yy]
+    <<(x at _A), <<(y at _B), (z at _C)>>[b, yy]>>[r,g] -> << <<x, y>>, z >>
 

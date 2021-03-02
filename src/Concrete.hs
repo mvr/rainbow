@@ -37,13 +37,16 @@ data Palette where
 -- colExtHom bodyc (NamedColour n) = NamedColour n
 -- colExtHom bodyc ZeroColour = ZeroColour
 
--- FIXME: Let's try this first, a slice is specified by a list of labels that are tensored together.
+-- FIXME: Let's try this first, a slice is specified by a list of colour labels that are tensored together.
 data Slice where
   Slice :: [Ident] -> Slice
   SliceOmitted :: Slice
   SliceOne :: Slice
   SliceTop :: Slice
   deriving (Show, Eq)
+
+sliceUnion :: Slice -> Slice -> Slice
+sliceUnion (Slice l) (Slice r) = Slice $ l ++ r
 
 data Unit where
   deriving (Show, Eq)
@@ -72,7 +75,7 @@ data Term where
   Und :: Ty -> Ty
 
   Tensor :: Maybe Ident -> Ty -> Ty -> Ty
-  Hom :: Maybe Ident -> Ty -> Ty -> Ty
+  Hom :: {- variable -} Maybe Ident -> {- var col -} Maybe Ident -> Ty -> {- ambient col -} Maybe Ident -> Ty -> Ty
 
   Var :: Ident -> Term
   ZeroVar :: Ident -> Term

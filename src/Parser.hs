@@ -218,12 +218,21 @@ term =
               b <- term
               return (Tensor n a b)
           )
-  <|> try (Hom Nothing <$> atomic <* homSym <*> term)
+  <|> try (Hom Nothing <$> pure Nothing <*> atomic <* homSym <*> pure Nothing <*> term)
   <|> try (do
               TeleCell n a <- teleCell
               homSym
+              (ac, bc) <- do
+                symbol "["
+                ac <- ident
+                symbol ","
+                bc <- ident
+                symbol "]"
+                return (Just ac, Just bc)
+                <|>
+                return (Nothing, Nothing)
               b <- term
-              return (Hom n a b)
+              return (Hom n ac a bc b)
           )
   <|> try (Und <$> (symbol "♮" *> term))
   <|> (
