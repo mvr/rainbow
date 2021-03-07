@@ -50,6 +50,7 @@ data BindPat where
   ZeroVarPat :: C.Ident -> C.Ty -> BindPat
   UndInPat :: BindPat -> BindPat
   PairPat :: BindPat -> BindPat -> BindPat
+  ReflPat :: BindPat -> BindPat
   TensorPat :: Colour -> BindPat -> Colour -> BindPat -> BindPat
   ZeroTensorPat :: BindPat -> BindPat -> BindPat
   deriving (Show)
@@ -172,6 +173,7 @@ fillPatCols (C.VarPat x ty) = pure (VarPat x ty)
 fillPatCols (C.ZeroVarPat x ty) = pure (ZeroVarPat x ty)
 fillPatCols (C.UndInPat p) = UndInPat <$> fillPatCols p
 fillPatCols (C.PairPat p q) = PairPat <$> fillPatCols p <*> fillPatCols q
+fillPatCols (C.ReflPat p) = ReflPat <$> fillPatCols p
 fillPatCols (C.TensorPat l p r q) = do
   l' <- case l of
            Just c -> pure (NamedCol c)
@@ -202,6 +204,7 @@ bindPat (PairPat p q) = do
   p' <- bindPat p
   q' <- local (bindsExtMany (patVars p)) $ bindPat q
   return $ S.PairPat p' q'
+bindPat (ReflPat p) = S.ReflPat <$> bindPat p
 bindPat (TensorPat _ p _ q) = do
   p' <- bindPat p
   q' <- local (bindsExtMany (patVars p)) $ bindPat q
@@ -224,12 +227,14 @@ bind (C.App f args) = S.App <$> (bind (C.App f (init args))) <*> (bind (last arg
 bind (C.Pair a b) = S.Pair <$> (bind a) <*> (bind b)
 bind (C.Fst p) = S.Fst <$> (bind p)
 bind (C.Snd p) = S.Snd <$> (bind p)
+bind (C.Refl a) = S.Refl <$> bind a
 bind (C.UndIn a) = S.UndIn <$> (bind a)
 bind (C.UndOut a) = S.UndOut <$> (bind a)
 bind (C.Pi [] b) = bind b
 bind (C.Pi (C.TeleCell n ty : cells) b) = S.Pi <$> (bind ty) <*> (local (bindsExtLam n) $ bind (C.Pi cells b))
 bind (C.Sg [] b) = bind b
 bind (C.Sg (C.TeleCell n ty : cells) b) = S.Sg <$> (bind ty) <*> (local (bindsExtLam n) $ bind (C.Sg cells b))
+bind (C.Id aty a b) = S.Id <$> bind aty <*> bind a <*> bind b
 bind (C.Und a) = S.Und <$> bind a
 bind (C.Tensor n a b) = S.Tensor <$> bind a <*> local (bindsExtLam n ) (bind b)
 bind (C.Hom bodyc yc y a b) = do

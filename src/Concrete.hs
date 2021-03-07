@@ -15,13 +15,11 @@ data Slice where
   SliceTop :: Slice
   deriving (Show, Eq)
 
-
-
 data Unit where
   deriving (Show, Eq)
 
 data TeleCell = TeleCell (Maybe Ident) Ty
-  deriving (Show)
+  deriving (Eq, Show)
 
 type Ty = Term
 
@@ -33,6 +31,7 @@ data Term where
   Pi :: [TeleCell] -> Ty -> Ty
   One :: Ty
   Sg :: [TeleCell] -> Ty -> Ty
+  Id :: Ty -> Term -> Term -> Ty
 
   Und :: Ty -> Ty
 
@@ -51,6 +50,8 @@ data Term where
 
   OneIn :: Term
 
+  Refl :: Term -> Term
+
   UndIn :: Term -> Term
   UndOut :: Term -> Term
 
@@ -67,7 +68,7 @@ data Term where
   HomLam :: {- body colour -} Maybe Ident -> {- var colour -} Maybe Ident -> {- var name -} Ident -> Term -> Term
   HomApp :: Maybe Slice -> Term -> Maybe Slice -> Term -> Term
 
-  deriving (Show)
+  deriving (Eq, Show)
 
 
 data Pat where
@@ -77,6 +78,7 @@ data Pat where
   ZeroVarPat :: Ident -> Ty -> Pat
   UndInPat :: Pat -> Pat
   PairPat :: Pat -> Pat -> Pat
+  ReflPat :: Pat -> Pat
   TensorPat :: Maybe Ident -> Pat -> Maybe Ident -> Pat -> Pat
   ZeroTensorPat :: Pat -> Pat -> Pat
   deriving (Show)
@@ -87,6 +89,8 @@ comprehendPat t = go False t -- Have we been zeroed by an UndIn yet?
     go False (Check (Var x) ty) = Just $ VarPat x ty
     go True (Check (ZeroVar x) ty) = Just $ ZeroVarPat x ty
     go f OneIn = Just $ OnePat
+    go False (Pair x (Pair x' (Refl x'')))
+      | x == x' && x' == x'' = ReflPat <$> go False x
     go f (Pair x y) = PairPat <$> go f x <*> go f y
     go False (TensorPair lc x rc y) = TensorPat <$> pure (comprehendCol lc) <*> go False x <*> pure (comprehendCol rc) <*> go False y
       where comprehendCol (Just (Slice [c])) = Just c

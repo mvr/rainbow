@@ -29,3 +29,8 @@ let assoc : (A : U<0>) (B : U<0>) (C : U<0>) (p : _A ⊗ (_B ⊗ _C)) -> ((_A �
   match p at (_A ⊗ _B) ⊗ _C with
     <<(x at _A), <<(y at _B), (z at _C)>> >> -> << <<x, y>>, z >>
 
+let path_comp : (A : U<0>) (a b c : A) (p : Id A a b) (q : Id A b c) -> Id A a c =
+  fun A a b c p q -> 
+  (match <a, <b, p> > at t -> (c' : A) (q' : Id A (fst (snd t)) c') -> Id A (fst t) c' with
+    < (x at A), <(x at A), refl (x at A)> > -> (fun c' q' -> q')
+  ) c q

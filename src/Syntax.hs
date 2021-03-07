@@ -19,6 +19,7 @@ data Pat where
   VarPat :: Ty -> Pat
   ZeroVarPat :: Ty -> Pat
   PairPat :: Pat -> Pat -> Pat
+  ReflPat :: Pat -> Pat
   TensorPat :: Pat -> Pat -> Pat
   UndInPat :: Pat -> Pat
   -- IdPat :: Pat -> Pat -> Pat
@@ -107,13 +108,13 @@ data Term where
   deriving (Show, Eq)
 
 data SemEnv = SemEnv SemPal [Value]
-  deriving (Eq)
+  deriving ()
 
 semEnvLength :: SemEnv -> Int
 semEnvLength (SemEnv _ env) = length env
 
 data SemTele = SemTele SemPal [Value]
-  deriving (Eq)
+  deriving ()
 
 semEnvExt :: SemEnv -> [Value] -> SemEnv
 semEnvExt (SemEnv pal env) env' = (SemEnv pal (env' ++ env))
@@ -126,18 +127,22 @@ semEnvTensor sl (SemEnv pal env) sr (SemTele pal' env') = (SemEnv (TensorSemPal 
 
 data Closure where
   Closure :: Term -> SemEnv -> Closure
-  deriving (Eq)
+  ClosureFunc :: (Value -> Value) -> Closure
+  deriving ()
 data ClosurePat where
   ClosurePat :: Term -> SemEnv -> ClosurePat
-  deriving (Eq)
+  deriving ()
 
-instance Show Closure where show (Closure term _) = "(Closure (" ++ show term ++ ") [...])"
+instance Show Closure where
+  show (Closure term _) = "(Closure (" ++ show term ++ ") [...])"
+  show (ClosureFunc _) = "(ClosureFunc [...])"
+
 instance Show ClosurePat where show (ClosurePat term _) = "(ClosurePat (" ++ show term ++ ") [...])"
 
 -- This is a closure containing a pattern
 data PatClosure where
   PatClosure :: Pat -> SemEnv -> PatClosure
-  deriving (Eq)
+  deriving ()
 instance Show PatClosure where show (PatClosure pat _) = "(PatClosure (" ++ show pat ++ ") [...])"
 -- data PatHomClosure where
 --   PatHomClosure :: Pat -> SemEnv -> PatHomClosure
@@ -152,12 +157,13 @@ data VPat where
   VarVPat :: VTy -> VPat
   ZeroVarVPat :: VTy -> VPat
   PairVPat :: VPat -> PatClosure -> VPat
+  ReflVPat :: VPat -> VPat
   TensorVPat :: VPat -> PatClosure -> VPat
   UndInVPat :: VPat -> VPat
   -- IdVPat :: VPat -> VPat -> VPat
   -- UnitorLeftVPat
   -- UnitorRightVPat
-  deriving (Show, Eq)
+  deriving (Show)
 
 data Value where
   VNeutral :: {- type -} VTy -> Neutral -> Value
@@ -187,7 +193,7 @@ data Value where
 
   VHom :: VTy -> Closure -> Value
   VHomLam :: Closure -> Value
-  deriving (Show, Eq)
+  deriving (Show)
 
 data Neutral where
   NVar :: Int -> Neutral -- DeBruijn levels for variables
@@ -207,10 +213,10 @@ data Neutral where
   NUndOut :: Neutral -> Neutral
 
   NHomApp :: Neutral -> Normal -> Neutral
-  deriving (Show, Eq)
+  deriving (Show)
 
 data Normal where
   Normal :: { nfTy :: VTy, nfTerm :: Value } -> Normal
-  deriving (Eq)
+  deriving ()
 
 instance Show Normal where show (Normal _ t) = show t

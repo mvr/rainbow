@@ -2,6 +2,8 @@ module Parser where
 
 import Data.Void
 
+import Control.Monad (join)
+
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -23,12 +25,12 @@ symbol :: String -> Parser String
 symbol = L.symbol sc
 
 reserved :: [String]
-reserved = ["let", "fun", "fst", "snd", "undin", "undout", "U", "type", "at", "with", "match", "hom", "don't"]
+reserved = ["let", "fun", "fst", "snd", "undin", "undout", "U", "type", "at", "with", "match", "hom", "don't", "Id", "refl"]
 
 ident :: Parser Ident
 ident = (lexeme . try) (p >>= check)
   where
-    p       = (:) <$> letterChar <*> many (alphaNumChar <|> char '\'')
+    p       = (:) <$> letterChar <*> many (alphaNumChar <|> char '\'' <|> char '_')
     check x = if x `elem` reserved
               then fail $ "keyword " ++ show x ++ " cannot be an identifier"
               else return x
@@ -72,6 +74,20 @@ teleCell = do
   symbol ")"
   return $ TeleCell (Just n) nty
 
+-- Allow binding many variables of the same type, only for Pi types to
+-- avoid confusion
+teleMultiCell :: Parser [TeleCell]
+teleMultiCell = do
+  symbol "("
+  ns <- some ident
+  symbol ":"
+  nty <- term
+  symbol ")"
+  return $ fmap (\n -> TeleCell (Just n) nty) ns
+
+teleCells :: Parser [TeleCell]
+teleCells = join <$> some teleMultiCell
+
 atomic :: Parser Term
 atomic =
   try ( symbol "(" *> term <* symbol ")" )
@@ -114,6 +130,7 @@ atomic =
 
     return (TensorPair slL a slR b)
   )
+  <|> try (Refl <$> (symbol "refl" *> term))
   <|> try (ZeroVar <$> (char '_' *> ident))
   <|> Var <$> ident
 
@@ -202,7 +219,7 @@ term =
               b <- term
               return (Pi [TeleCell Nothing a] b)
               )
-  <|> try (Pi <$> some teleCell <* funSym <*> term)
+  <|> try (Pi <$> teleCells <* funSym <*> term)
   <|> try (Sg <$> some teleCell <* prodSym <*> term)
   <|> try (do
               a <- atomic
@@ -211,6 +228,7 @@ term =
               return (Sg [TeleCell Nothing a] b)
               )
   <|> try (One <$ symbol "1")
+  <|> try (Id <$ symbol "Id" <*> atomic <*> atomic <*> atomic)
   <|> try (Tensor Nothing <$> atomic <* tensorSym <*> term)
   <|> try (do
               TeleCell n a <- teleCell

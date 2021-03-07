@@ -18,10 +18,10 @@ data EntryAnn = Marked | Col SlI | Global
   deriving (Eq, Show)
 
 data CtxEntry = CtxEntry Value VTy EntryAnn
-  deriving (Eq, Show)
+  deriving (Show)
 
 data SemCtx = SemCtx { ctxPal :: SemPal, ctxVars :: [CtxEntry] }
-  deriving (Eq, Show)
+  deriving (Show)
 
 entryLiftComma :: CtxEntry -> CtxEntry
 entryLiftComma (CtxEntry v ty (Col s)) = CtxEntry v ty (Col (CommaSl (Sub s) No))
@@ -41,9 +41,9 @@ ctxToEnv (SemCtx pal vars) = SemEnv pal (fmap entryToValue vars)
 -- palettes can be combined. Hopefully this duplication is worth it in
 -- errors caught.
 data SemCtxTele = SemCtxTele { telePal :: SemPal, teleVars :: [CtxEntry] }
-  deriving (Eq, Show)
+  deriving (Show)
 data SemHomTele = SemHomTele { homTelePal :: SemPal, homTeleVars :: [CtxEntry] }
-  deriving (Eq, Show)
+  deriving (Show)
 
 semCtxComma :: SemCtx -> SemCtxTele -> SemCtx
 semCtxComma (SemCtx pal env) (SemCtxTele pal' env') = (SemCtx (CommaSemPal pal pal') (env' ++ fmap entryLiftComma env))
@@ -117,6 +117,11 @@ newtype CheckM a = CheckM (ReaderT SemCtx (ExceptT Err Identity) a)
 runCheckM :: SemCtx -> CheckM a -> Either Err a
 runCheckM env (CheckM m) = runIdentity $ runExceptT $ runReaderT m env
 
+eval :: Term -> CheckM Value
+eval aty = do
+  semEnv <- asks ctxToEnv
+  return $ N.eval semEnv aty
+
 evalAndVar :: Ty -> CheckM (VTy, Value)
 evalAndVar aty = do
   semEnv <- asks ctxToEnv
@@ -124,6 +129,12 @@ evalAndVar aty = do
   lev <- asks ctxLen
   let var = makeVarVal atyval lev
   return (atyval, var)
+
+assertEq :: VTy -> Value -> Value -> CheckM ()
+assertEq ty a b = do
+  size <- asks ctxSize
+  unless (N.eqNF size (ty, a) (ty, b)) $
+    throwError $ "Expected " ++ show a ++ " to equal " ++ show b
 
 check :: SlI -> Term -> VTy -> CheckM ()
 -- check s t ty | traceShow ("Check: " ++ show (s, t, ty)) False = undefined
@@ -156,6 +167,20 @@ check s (Pair a b) (VSg aty bclo) = do
   let aval = N.eval semEnv a
   check s b (N.doClosure bclo aval)
 check s (Pair a b) ty = throwError "Unexpected pair"
+
+check s (Id aty a b) (VUniv l) = do
+  check s aty (VUniv l)
+  aty' <- eval aty
+  check s a aty'
+  check s b aty'
+check s (Id aty a b) t = throwError "Expected universe"
+
+check s (Refl t) (VId aty a b) = do
+  check s t aty
+  tval <- eval t
+  assertEq aty a tval
+  assertEq aty b tval
+check s (Refl t) ty = throwError "Unexpected refl"
 
 check s (Und ty) (VUniv l) = do
   check OneSl ty (VUniv l)
@@ -335,6 +360,9 @@ checkAndEvalPat s path (PairPat p q) = do
   (ptele, pterm) <- checkAndEvalPat s (LeftCommaPath path) p
   (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightCommaPath path) q
   return (qtele ++ ptele, VPair pterm qterm)
+checkAndEvalPat s path (ReflPat p) = do
+  (ptele, pterm) <- checkAndEvalPat s path p
+  return (ptele, VPair pterm (VPair pterm (VRefl pterm)))
 checkAndEvalPat s path (TensorPat p q) = do
   size <- asks ctxSize
   let psl = N.makeSliceVal size (LeftTensorPath path)
@@ -377,6 +405,11 @@ checkTy s (Sg aty bty) = do
   checkTy s aty
   (atyval, var) <- evalAndVar aty
   local (ctxExtVar var atyval s) $ checkTy s bty
+checkTy s (Id aty a b) = do
+  checkTy s aty
+  aty' <- eval aty
+  check s a aty'
+  check s b aty'
 checkTy s (Und ty) = do
   checkTy OneSl ty
 checkTy s (Tensor aty bty) = do

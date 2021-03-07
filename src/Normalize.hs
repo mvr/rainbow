@@ -114,6 +114,8 @@ recoverPatType UnitVPat = VUnit
 recoverPatType (VarVPat ty) = ty
 recoverPatType (ZeroVarVPat ty) = ty
 recoverPatType (PairVPat p (PatClosure q env)) = VSg (recoverPatType p) (Closure (patToType q) env)
+recoverPatType (ReflVPat p) = let pty = (recoverPatType p) in
+  VSg pty (ClosureFunc (\x -> VSg pty (ClosureFunc (\y -> VId pty x y))))
 recoverPatType (TensorVPat p (PatClosure q env)) = VTensor (recoverPatType p) (Closure (patToType q) env)
 recoverPatType (UndInVPat p) = VUnd (recoverPatType p)
 
@@ -137,11 +139,13 @@ evalPat env UnitPat = UnitVPat
 evalPat env (VarPat ty) = VarVPat (eval env ty)
 evalPat env (ZeroVarPat ty) = ZeroVarVPat (eval env ty)
 evalPat env (PairPat p q) = PairVPat (evalPat env p) (PatClosure q env)
+evalPat env (ReflPat p) = ReflVPat (evalPat env p)
 evalPat env (TensorPat p q) = TensorVPat (evalPat env p) (PatClosure q env)
 evalPat env (UndInPat p) = UndInVPat (evalPat env p)
 
 doClosure :: Closure -> Value -> Value
 doClosure (Closure t (SemEnv pal env)) a = eval (SemEnv pal (a : env)) t
+doClosure (ClosureFunc f) a = f a
 
 doClosurePat :: ClosurePat -> SemTele -> Value
 doClosurePat (ClosurePat t env) env' = eval (semEnvComma env env') t
@@ -153,8 +157,11 @@ doPatClosure :: PatClosure -> [Value] -> VPat
 doPatClosure (PatClosure t env) env' = evalPat (semEnvExt env env') t
 
 eval :: SemEnv -> Term -> Value
+-- eval env t | traceShow t False = undefined
 eval env (Var i) = envLookup env i
 eval env (ZeroVar i) = zero (envLookup env i)
+
+eval env (Univ l) = VUniv l
 
 eval env (Check t _) = eval env t
 
@@ -169,7 +176,8 @@ eval env (Pair a b) = VPair (eval env a) (eval env b)
 eval env (Fst p) = doFst (eval env p)
 eval env (Snd p) = doSnd (eval env p)
 
-eval env (Univ l) = VUniv l
+eval env (Id aty a b) = VId (eval env aty) (eval env a) (eval env b)
+eval env (Refl a) = VRefl (eval env a)
 
 eval env (Und ty) = VUnd (eval env ty)
 eval env (UndIn a) = VUndIn (eval env a)
@@ -181,8 +189,8 @@ eval env (Hom aty bty) = VHom (eval env aty) (Closure bty env)
 eval env (HomLam b) = undefined -- VHomLam (Closure b env)
 eval env (HomApp _ f _ a) = doHomApp (eval env f) (eval env a)
 
-evalCartPatToPal :: SemPal -> Pat -> SemPal -- Really a `SemPalExt`
-evalCartPatToPal pal OnePat = undefined
+-- evalCartPatToPal :: SemPal -> Pat -> SemPal -- Really a `SemPalExt`
+-- evalCartPatToPal pal OnePat = undefined
 
 --------------------------------------------------------------------------------
 -- Equality
@@ -248,6 +256,9 @@ makeVPatTele size path (PairVPat p q) =
   let (ptele, pterm) = makeVPatTele size (LeftCommaPath path) p
       (qtele, qterm) = makeVPatTele (size `extSizeEnv` ptele) (RightCommaPath path) (doPatClosure q ptele)
   in (qtele ++ ptele, VPair pterm qterm)
+makeVPatTele size path (ReflVPat p) =
+  let (ptele, pterm) = makeVPatTele size path p
+  in (ptele, VPair pterm (VPair pterm (VRefl pterm)))
 makeVPatTele size path (TensorVPat p q) =
   let psl = makeSliceVal size (LeftTensorPath path)
       (ptele, pterm) = makeVPatTele size (LeftTensorPath path) p
@@ -271,6 +282,10 @@ eqTy size (VSg aty1 bclo1) (VSg aty2 bclo2) =
   let var = makeVarValS aty1 size
   in eqTy size aty1 aty2 &&
      eqTy (extSizeLam size) (doClosure bclo1 var) (doClosure bclo2 var)
+eqTy size (VId aty1 a1 b1) (VId aty2 a2 b2) =
+  eqTy size aty1 aty2 &&
+  eqNF size (aty1, a1) (aty1, a2) &&
+  eqNF size (aty1, b1) (aty1, b2)
 eqTy size (VTensor aty1 bclo1) (VTensor aty2 bclo2) =
   let var = makeVarValS aty1 size
   in eqTy size aty1 aty2 &&
