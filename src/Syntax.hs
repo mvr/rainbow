@@ -55,13 +55,11 @@ shapeToPal = undefined
 -- To represent where we are in a pattern
 -- Note: we read a path backwards: if `(a, b), (c, d)` then
 -- `b` has path RightCommaPath (LeftCommaPath StartPath)
-data PatPath where
-  StartPath :: PatPath
-  LeftCommaPath :: PatPath -> PatPath
-  RightCommaPath :: PatPath -> PatPath
-  LeftTensorPath :: PatPath -> PatPath
-  RightTensorPath :: PatPath -> PatPath
+
+data PatPathPiece = LeftCommaPath | RightCommaPath | LeftTensorPath | RightTensorPath
   deriving (Show, Eq)
+
+type PatPath = [PatPathPiece]
 
 data Term where
   Check :: Term -> Ty -> Term

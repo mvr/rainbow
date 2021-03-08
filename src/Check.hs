@@ -122,6 +122,12 @@ eval aty = do
   semEnv <- asks ctxToEnv
   return $ N.eval semEnv aty
 
+evalClosure :: Closure -> Term -> CheckM Value
+evalClosure clo a = do
+  semEnv <- asks ctxToEnv
+  let aval = N.eval semEnv a
+  return $ N.doClosure clo aval
+
 evalAndVar :: Ty -> CheckM (VTy, Value)
 evalAndVar aty = do
   semEnv <- asks ctxToEnv
@@ -163,9 +169,8 @@ check s (Sg aty bclo) t = throwError "Expected universe"
 
 check s (Pair a b) (VSg aty bclo) = do
   check s a aty
-  semEnv <- asks ctxToEnv
-  let aval = N.eval semEnv a
-  check s b (N.doClosure bclo aval)
+  bty <- evalClosure bclo a
+  check s b bty
 check s (Pair a b) ty = throwError "Unexpected pair"
 
 check s (Id aty a b) (VUniv l) = do
@@ -204,9 +209,8 @@ check s t@(TensorPair asl a bsl b) (VTensor aty bclo) = do
   when (not $ validSplitOf s (asl, bsl)) $ throwError $ "Invalid split of " ++ show s ++ " into " ++ show (asl, bsl)
 
   check asl a aty
-  semEnv <- asks ctxToEnv
-  let aval = N.eval semEnv a
-  check bsl b (N.doClosure bclo aval)
+  bty <- evalClosure bclo a
+  check bsl b bty
 check s (TensorPair _ _ _ _) ty = throwError "Unexpected tensor intro"
 
 check s (Hom aty bty) (VUniv l) = do
@@ -248,8 +252,7 @@ synth s (ZeroVar i) = do
   return (N.zero ty)
 
 synth s (Check a aty) = do
-  semEnv <- asks ctxToEnv
-  let tyval = N.eval semEnv aty
+  tyval <- eval aty
   check s a tyval
   return tyval
 
@@ -262,10 +265,7 @@ synth s (Fst p) = do
 synth s (Snd p) = do
   ty <- synth s p
   case ty of
-    (VSg aty bclo) -> do
-      semEnv <- asks ctxToEnv
-      let aval = N.eval semEnv (Fst p)
-      return $ N.doClosure bclo aval
+    (VSg aty bclo) -> evalClosure bclo (Fst p)
     _ -> throwError "expected Sg type"
 
 synth s (App f a) = do
@@ -273,9 +273,7 @@ synth s (App f a) = do
   case fty of
     (VPi aty bclo) -> do
       check s a aty
-      semEnv <- asks ctxToEnv
-      let aval = N.eval semEnv a
-      return $ N.doClosure bclo aval
+      evalClosure bclo a
     _ -> throwError "expected Pi type"
 
 synth s (HomApp fsl f asl a) = do
@@ -285,9 +283,7 @@ synth s (HomApp fsl f asl a) = do
   case fty of
     (VHom aty bclo) -> do
       check asl a aty
-      semEnv <- asks ctxToEnv
-      let aval = N.eval semEnv a
-      return $ N.doClosure bclo aval
+      evalClosure bclo a
     _ -> throwError "expected Hom type"
 
 synth s (UndOut n) = do
@@ -299,8 +295,8 @@ synth s (UndOut n) = do
 synth s (Match tar mot pat branch) = do
   size <- asks ctxSize
 
-  let pal = N.makePatPal size (RightCommaPath StartPath) (patToShape pat)
-  (pattele, patterm) <- local (flip semCtxComma (SemCtxTele pal [])) $ checkAndEvalPat s (RightCommaPath StartPath) pat
+  let pal = N.makePatPal size [RightCommaPath] (patToShape pat)
+  (pattele, patterm) <- local (flip semCtxComma (SemCtxTele pal [])) $ checkAndEvalPat s [] pat
 
   semEnv <- asks ctxToEnv
 
@@ -327,16 +323,15 @@ synth s a = throwError $ "cannot synth the type of " ++ show a
 -- `s` represents the slice that the match is being checked at, not the
 checkAndEvalPat :: SlI -> PatPath -> Pat -> CheckM ([CtxEntry], Value)
 checkAndEvalPat s path (VarPat ty) = do
-  checkTy (sliceAtType s path) ty
+  let c = sliceAtType s path
+  checkTy c ty
   size <- asks ctxSize
   env <- asks ctxToEnv
 
   let vty = N.eval env ty
       v = N.makeVarValS vty size
-      s = N.makeSliceVal size path
-      i = N.pathToSlice path
 
-  return $ ([CtxEntry v vty (Col i)], v)
+  return $ ([CtxEntry v vty (Col c)], v)
 
 checkAndEvalPat s path (ZeroVarPat ty) = do
   checkTy OneSl ty
@@ -357,18 +352,18 @@ checkAndEvalPat s path UnitPat = do
   let u = N.makeUnitVal size path
   return ([], VUnitIn u)
 checkAndEvalPat s path (PairPat p q) = do
-  (ptele, pterm) <- checkAndEvalPat s (LeftCommaPath path) p
-  (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightCommaPath path) q
+  (ptele, pterm) <- checkAndEvalPat s (LeftCommaPath : path) p
+  (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightCommaPath : path) q
   return (qtele ++ ptele, VPair pterm qterm)
 checkAndEvalPat s path (ReflPat p) = do
   (ptele, pterm) <- checkAndEvalPat s path p
   return (ptele, VPair pterm (VPair pterm (VRefl pterm)))
 checkAndEvalPat s path (TensorPat p q) = do
   size <- asks ctxSize
-  let psl = N.makeSliceVal size (LeftTensorPath path)
-      qsl = N.makeSliceVal size (RightTensorPath path)
-  (ptele, pterm) <- checkAndEvalPat s (LeftTensorPath path) p
-  (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightTensorPath path) q
+  let psl = N.makeSliceVal size (LeftTensorPath : path)
+      qsl = N.makeSliceVal size (RightTensorPath : path)
+  (ptele, pterm) <- checkAndEvalPat s (LeftTensorPath : path) p
+  (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightTensorPath : path) q
   return (qtele ++ ptele, VTensorPair psl pterm qsl qterm)
 
 -- The slice to check a type sitting at `path` in a pattern, when the
@@ -376,21 +371,21 @@ checkAndEvalPat s path (TensorPat p q) = do
 
 -- FIXME: will need a different version of this for hom match
 sliceAtType :: SlI -> PatPath -> SlI
-sliceAtType s p = case sliceAtType' p  of
+sliceAtType s p = case sliceAtType' (reverse p)  of
   (s', True) -> CommaSl No (Sub s')
   (s', False) -> CommaSl (Sub s) (Sub s')
 
 -- Bool to ask whether we have gone under a tensor and lose stuff to the left.
 sliceAtType' :: PatPath -> (SlI, Bool)
-sliceAtType' StartPath = (TopSl, False)
-sliceAtType' (LeftTensorPath StartPath) = (TensorSl Yes No, True)
-sliceAtType' (LeftTensorPath p) = (TensorSl (Sub $ fst $ sliceAtType' p) No, True)
-sliceAtType' (RightTensorPath StartPath) = (TensorSl No Yes, True)
-sliceAtType' (RightTensorPath p) = (TensorSl No (Sub $ fst $ sliceAtType' p), True)
-sliceAtType' (LeftCommaPath StartPath) = (CommaSl Yes No, False)
-sliceAtType' (LeftCommaPath p) = let (s, flag) = sliceAtType' p in (CommaSl (Sub s) No, flag)
-sliceAtType' (RightCommaPath StartPath) = (CommaSl Yes Yes, False)
-sliceAtType' (RightCommaPath p) = case sliceAtType' p of
+sliceAtType' [] = (TopSl, False)
+sliceAtType' [LeftTensorPath] = (TensorSl Yes No, True)
+sliceAtType' [RightTensorPath] = (TensorSl No Yes, True)
+sliceAtType' [LeftCommaPath] = (CommaSl Yes No, False)
+sliceAtType' [RightCommaPath] = (CommaSl No Yes, False)
+sliceAtType' (LeftTensorPath : p) = (TensorSl (Sub $ fst $ sliceAtType' p) No, True)
+sliceAtType' (RightTensorPath : p) = (TensorSl No (Sub $ fst $ sliceAtType' p), True)
+sliceAtType' (LeftCommaPath : p) = let (s, b) = sliceAtType' p in (CommaSl (Sub $ s) No, b)
+sliceAtType' (RightCommaPath : p) = case sliceAtType' p of
   (s, True) -> (CommaSl No (Sub s), True)
   (s, False) -> (CommaSl Yes (Sub s), False)
 

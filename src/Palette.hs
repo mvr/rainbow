@@ -60,14 +60,17 @@ weakenableTo (TensorSl l1 r1) (TensorSl l2 r2) = tchoice l1 l2 && tchoice r1 r2
         tchoice (Sub s) Yes = weakenableTo s TopSl
         tchoice (Sub s1) (Sub s2) = weakenableTo s1 s2
         tchoice _ _ = False
-weakenableTo (CommaSl l1 r1) (CommaSl l2 r2) = cchoice l1 l2 && cchoice r1 r2
-  where cchoice Yes Yes = True
-        cchoice No _ = True
-        cchoice (Sub s) Yes = weakenableTo s TopSl
-        cchoice (Sub s1) (Sub s2) = weakenableTo s1 s2
-        cchoice _ _ = False
+weakenableTo (CommaSl l1 r1) TopSl = commaWeakenableTo l1 Yes && commaWeakenableTo r1 Yes
+weakenableTo (CommaSl l1 r1) (CommaSl l2 r2) = commaWeakenableTo l1 l2 && commaWeakenableTo r1 r2
 weakenableTo SummonedUnitSl SummonedUnitSl = True
 weakenableTo l r = error $ "Unhandled " ++ show (l, r)
+
+commaWeakenableTo :: Choice SlI -> Choice SlI -> Bool
+commaWeakenableTo Yes Yes = True
+commaWeakenableTo No _ = True
+commaWeakenableTo (Sub s) Yes = weakenableTo s TopSl
+commaWeakenableTo (Sub s1) (Sub s2) = weakenableTo s1 s2
+commaWeakenableTo _ _ = False
 
 -- FIXME: incomplete
 validSplitOf :: SlI -> (SlI, SlI) -> Bool

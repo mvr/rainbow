@@ -211,16 +211,16 @@ extSizeLam :: Size -> Size
 extSizeLam (Size depth size) = Size depth (size + 1)
 
 pathToSlice :: PatPath -> SlI
-pathToSlice p = go p TopSl
-  where go StartPath sl = sl
-        go (LeftCommaPath p) TopSl = go p (CommaSl Yes No) -- FIXME: This is so stupid, I need to redo slices yet again
-        go (RightCommaPath p) TopSl = go p (CommaSl No Yes)
-        go (LeftTensorPath p) TopSl = go p (TensorSl Yes No)
-        go (RightTensorPath p) TopSl = go p (TensorSl No Yes)
-        go (LeftCommaPath p) sl = go p (CommaSl (Sub sl) No)
-        go (RightCommaPath p) sl = go p (CommaSl No (Sub sl))
-        go (LeftTensorPath p) sl = go p (TensorSl (Sub sl) No)
-        go (RightTensorPath p) sl = go p (TensorSl No (Sub sl))
+pathToSlice p = go (reverse p)
+  where go [] = TopSl
+        go [LeftCommaPath] = CommaSl Yes No -- FIXME: This is so stupid, I need to redo slices yet again
+        go [RightCommaPath] = CommaSl No Yes
+        go [LeftTensorPath] = TensorSl Yes No
+        go [RightTensorPath] = TensorSl No Yes
+        go (LeftCommaPath : p) = CommaSl (Sub $ go p) No
+        go (RightCommaPath : p) = CommaSl No (Sub $ go p)
+        go (LeftTensorPath : p) = TensorSl (Sub $ go p) No
+        go (RightTensorPath : p) = TensorSl No (Sub $ go p)
 
 makeUnitVal :: Size -> PatPath -> UnitL
 makeUnitVal (Size depth _) _ = undefined
@@ -247,27 +247,26 @@ makePatPal = undefined
 makeVPatTele :: Size -> PatPath -> VPat -> ([Value], Value)
 makeVPatTele size path (VarVPat ty) =
   let v = makeVarValS ty size
-      s = makeSliceVal size path
       i = pathToSlice path
   in ([v], v)
 makeVPatTele size _ OneVPat = ([], VOneIn)
 makeVPatTele size path UnitVPat = let u = makeUnitVal size path in ([], VUnitIn u)
 makeVPatTele size path (PairVPat p q) =
-  let (ptele, pterm) = makeVPatTele size (LeftCommaPath path) p
-      (qtele, qterm) = makeVPatTele (size `extSizeEnv` ptele) (RightCommaPath path) (doPatClosure q ptele)
+  let (ptele, pterm) = makeVPatTele size (LeftCommaPath : path) p
+      (qtele, qterm) = makeVPatTele (size `extSizeEnv` ptele) (RightCommaPath : path) (doPatClosure q ptele)
   in (qtele ++ ptele, VPair pterm qterm)
 makeVPatTele size path (ReflVPat p) =
   let (ptele, pterm) = makeVPatTele size path p
   in (ptele, VPair pterm (VPair pterm (VRefl pterm)))
 makeVPatTele size path (TensorVPat p q) =
-  let psl = makeSliceVal size (LeftTensorPath path)
-      (ptele, pterm) = makeVPatTele size (LeftTensorPath path) p
-      qsl = makeSliceVal size (RightTensorPath path)
-      (qtele, qterm) = makeVPatTele (size `extSizeEnv` ptele) (RightTensorPath path) (doPatClosure q ptele)
+  let psl = makeSliceVal size (LeftTensorPath : path)
+      (ptele, pterm) = makeVPatTele size (LeftTensorPath : path) p
+      qsl = makeSliceVal size (RightTensorPath : path)
+      (qtele, qterm) = makeVPatTele (size `extSizeEnv` ptele) (RightTensorPath : path) (doPatClosure q ptele)
   in (qtele ++ ptele , VTensorPair psl pterm qsl qterm)
 
 makeVPatCartTele :: Size -> VPat -> ([Value], Value)
-makeVPatCartTele size pat = makeVPatTele size (RightCommaPath StartPath) pat
+makeVPatCartTele size pat = makeVPatTele size [RightCommaPath] pat
 
 eqTy :: Size -> VTy -> VTy -> Bool
 -- eqTy size ty1 ty2 | traceShow ("eqTy:", ty1, ty2) False = undefined
@@ -336,8 +335,8 @@ eqNE size (NApp f1 (Normal aty1 a1)) (NApp f2 (Normal aty2 a2)) =
   eqNE size f1 f2 && eqNF size (aty1, a1) (aty2, a2)
 eqNE size (NMatch (Normal aty1 a1) mot1 sh1 pat1 br1) (NMatch (Normal aty2 a2) mot2 sh2 pat2 br2) =
   let motvar = makeVarValS aty1 size
-      pal = makePatPal size StartPath sh1 -- FIXME: or CommaRight?
-      (patvars, patterm) = makeVPatTele size StartPath pat1
+      pal = makePatPal size [] sh1 -- FIXME: or CommaRight?
+      (patvars, patterm) = makeVPatTele size [] pat1
       pattele = SemTele pal patvars
   in  eqTy size aty1 aty2
       && eqNF size (aty1, a1) (aty2, a2)
