@@ -216,7 +216,7 @@ check s (TensorPair _ _ _ _) ty = throwError "Unexpected tensor intro"
 check s (Hom aty bty) (VUniv l) = do
   check OneSl aty (VUniv l)
   (atyval, var) <- evalAndVar aty
-  local (ctxExtHom var atyval) $ check (TensorSl (Sub s) Yes) bty (VUniv l)
+  local (ctxExtHom var atyval) $ check (TensorSl (Sub s) (Sub IdSl)) bty (VUniv l)
 check s (Hom aty bclo) t = throwError "Expected universe"
 
 -- check s (HomLam b) (VHom aty bclo) = do
@@ -309,7 +309,7 @@ synth s (Match tar mot pat branch) = do
   check s tar tarty
 
   let (_, patterm) = N.makeVPatCartTele size vpat
-  local (flip semCtxComma (SemCtxTele pal pattele)) $ check (CommaSl (Sub s) Yes) branch (N.eval (envExt semEnv patterm) mot)
+  local (flip semCtxComma (SemCtxTele pal pattele)) $ check (CommaSl (Sub s) (Sub IdSl)) branch (N.eval (envExt semEnv patterm) mot)
 
   return $ N.eval (envExt semEnv (N.eval semEnv tar)) mot
 
@@ -377,17 +377,13 @@ sliceAtType s p = case sliceAtType' (reverse p)  of
 
 -- Bool to ask whether we have gone under a tensor and lose stuff to the left.
 sliceAtType' :: PatPath -> (SlI, Bool)
-sliceAtType' [] = (TopSl, False)
-sliceAtType' [LeftTensorPath] = (TensorSl Yes No, True)
-sliceAtType' [RightTensorPath] = (TensorSl No Yes, True)
-sliceAtType' [LeftCommaPath] = (CommaSl Yes No, False)
-sliceAtType' [RightCommaPath] = (CommaSl No Yes, False)
+sliceAtType' [] = (IdSl, False)
 sliceAtType' (LeftTensorPath : p) = (TensorSl (Sub $ fst $ sliceAtType' p) No, True)
 sliceAtType' (RightTensorPath : p) = (TensorSl No (Sub $ fst $ sliceAtType' p), True)
 sliceAtType' (LeftCommaPath : p) = let (s, b) = sliceAtType' p in (CommaSl (Sub $ s) No, b)
 sliceAtType' (RightCommaPath : p) = case sliceAtType' p of
   (s, True) -> (CommaSl No (Sub s), True)
-  (s, False) -> (CommaSl Yes (Sub s), False)
+  (s, False) -> (CommaSl (Sub IdSl) (Sub s), False)
 
 checkTy :: SlI -> Ty -> CheckM ()
 -- checkTy t | traceShow ("Check ty: " ++ show t) False = undefined
@@ -414,7 +410,7 @@ checkTy s (Tensor aty bty) = do
 checkTy s (Hom aty bty) = do
   checkTy OneSl aty
   (atyval, var) <- evalAndVar aty
-  local (ctxExtHom var atyval) $ checkTy (TensorSl (Sub s) Yes) bty
+  local (ctxExtHom var atyval) $ checkTy (TensorSl (Sub s) (Sub IdSl)) bty
 checkTy s a = do
   ty <- synth s a
   case ty of

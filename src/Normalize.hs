@@ -212,11 +212,7 @@ extSizeLam (Size depth size) = Size depth (size + 1)
 
 pathToSlice :: PatPath -> SlI
 pathToSlice p = go (reverse p)
-  where go [] = TopSl
-        go [LeftCommaPath] = CommaSl Yes No -- FIXME: This is so stupid, I need to redo slices yet again
-        go [RightCommaPath] = CommaSl No Yes
-        go [LeftTensorPath] = TensorSl Yes No
-        go [RightTensorPath] = TensorSl No Yes
+  where go [] = IdSl
         go (LeftCommaPath : p) = CommaSl (Sub $ go p) No
         go (RightCommaPath : p) = CommaSl No (Sub $ go p)
         go (LeftTensorPath : p) = TensorSl (Sub $ go p) No

@@ -119,20 +119,20 @@ bindColour OnePal col = Nothing
 bindColour OriginPal col = Nothing
 bindColour (UnitPal _) col = Nothing
 bindColour (LabelPal i s) col
-  | i == col = Just S.TopSl
+  | i == col = Just S.IdSl
   | otherwise = bindColour s col
 bindColour (CommaPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
-    (Nothing, Just S.TopSl) -> Just (S.CommaSl S.No S.Yes)
-    (Just S.TopSl, Nothing) -> Just (S.CommaSl S.Yes S.No)
+    (Nothing, Just S.IdSl) -> Just (S.CommaSl S.No (S.Sub S.IdSl))
+    (Just S.IdSl, Nothing) -> Just (S.CommaSl (S.Sub S.IdSl) S.No)
     (Nothing, Just r) -> Just (S.CommaSl S.No (S.Sub r))
     (Just l, Nothing) -> Just (S.CommaSl (S.Sub l) S.No)
 bindColour (TensorPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
-    (Nothing, Just S.TopSl) -> Just (S.TensorSl S.No S.Yes)
-    (Just S.TopSl, Nothing) -> Just (S.TensorSl S.Yes S.No)
+    (Nothing, Just S.IdSl) -> Just (S.TensorSl S.No (S.Sub S.IdSl))
+    (Just S.IdSl, Nothing) -> Just (S.TensorSl (S.Sub S.IdSl) S.No)
     (Nothing, Just r) -> Just (S.TensorSl S.No (S.Sub r))
     (Just l, Nothing) -> Just (S.TensorSl (S.Sub l) S.No)
 
@@ -312,14 +312,14 @@ processDecl env@(Env bindings checkCtx) (C.Def name cbody cty) = do
   let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings)) 0
   let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings)) 0
 
-  case S.runCheckM checkCtx $ S.checkTy S.TopSl ty of
+  case S.runCheckM checkCtx $ S.checkTy S.IdSl ty of
     Left err -> putStrLn $ "Error in type of " ++ name ++ ": " ++ err
     Right () -> return ()
 
   let semEnv = S.ctxToEnv checkCtx
   let semTy = N.eval semEnv ty
 
-  case S.runCheckM checkCtx $ S.check S.TopSl body semTy of
+  case S.runCheckM checkCtx $ S.check S.IdSl body semTy of
     Left err -> putStrLn $ "Error in: " ++ name ++ ": " ++ err
     Right () -> putStrLn $ "Checked: " ++ name
 
@@ -334,7 +334,7 @@ processDecl env@(Env bindings checkCtx) (C.Dont name cbody cty) = do
   let semEnv = S.ctxToEnv checkCtx
   let semTy = N.eval semEnv ty
 
-  case S.runCheckM checkCtx $ S.check S.TopSl body semTy of
+  case S.runCheckM checkCtx $ S.check S.IdSl body semTy of
     Left err -> putStrLn $ "Correctly failed: " ++ name ++ " because " ++ err
     Right () -> putStrLn $ "Error: " ++ name ++ " should not have typechecked!"
 

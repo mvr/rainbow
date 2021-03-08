@@ -8,19 +8,17 @@ data Palette where
   UnitPal :: Palette
   deriving (Show, Eq)
 
-data Choice a = Yes | No | Sub a
+data Choice a = No | Sub a
   deriving (Show, Eq, Functor)
 
 instance Semigroup a => Semigroup (Choice a) where
-  Yes <> No = Yes
-  No <> Yes = Yes
   No <> No = No
   (Sub a) <> No = Sub a
   No <> (Sub a) = Sub a
   (Sub a) <> (Sub b) = Sub (a <> b)
 
 data SlI where
-  TopSl :: SlI
+  IdSl :: SlI
   OneSl :: SlI
   SummonedUnitSl :: SlI
   -- LeftCommaSl :: SlI -> SlI
@@ -47,50 +45,39 @@ instance Monoid SlI where
 -- FIXME: incomplete
 weakenableTo :: SlI -> SlI -> Bool
 weakenableTo OneSl _ = True
-weakenableTo TopSl TopSl = True
-weakenableTo TopSl _ = False
-weakenableTo (TensorSl Yes Yes) TopSl = True
-weakenableTo (TensorSl (Sub l) (Sub r)) TopSl = weakenableTo l TopSl && weakenableTo r TopSl
-weakenableTo (TensorSl (Sub l) Yes) TopSl = weakenableTo l TopSl
-weakenableTo (TensorSl Yes (Sub r)) TopSl = weakenableTo r TopSl
-weakenableTo (TensorSl _ _) TopSl = False
+weakenableTo IdSl IdSl = True
+weakenableTo IdSl _ = False
+weakenableTo (TensorSl (Sub l) (Sub r)) IdSl = weakenableTo l IdSl && weakenableTo r IdSl
+weakenableTo (TensorSl _ _) IdSl = False
 weakenableTo (TensorSl l1 r1) (TensorSl l2 r2) = tchoice l1 l2 && tchoice r1 r2
-  where tchoice Yes Yes = True
-        tchoice No No = True
-        tchoice (Sub s) Yes = weakenableTo s TopSl
+  where tchoice No No = True
         tchoice (Sub s1) (Sub s2) = weakenableTo s1 s2
         tchoice _ _ = False
-weakenableTo (CommaSl l1 r1) TopSl = commaWeakenableTo l1 Yes && commaWeakenableTo r1 Yes
+weakenableTo (CommaSl l1 r1) IdSl = weakenableTo (CommaSl l1 r1) (CommaSl (Sub IdSl) (Sub IdSl))
 weakenableTo (CommaSl l1 r1) (CommaSl l2 r2) = commaWeakenableTo l1 l2 && commaWeakenableTo r1 r2
 weakenableTo SummonedUnitSl SummonedUnitSl = True
 weakenableTo l r = error $ "Unhandled " ++ show (l, r)
 
 commaWeakenableTo :: Choice SlI -> Choice SlI -> Bool
-commaWeakenableTo Yes Yes = True
 commaWeakenableTo No _ = True
-commaWeakenableTo (Sub s) Yes = weakenableTo s TopSl
 commaWeakenableTo (Sub s1) (Sub s2) = weakenableTo s1 s2
 commaWeakenableTo _ _ = False
 
 -- FIXME: incomplete
 validSplitOf :: SlI -> (SlI, SlI) -> Bool
 validSplitOf OneSl (OneSl, OneSl) = True
-validSplitOf TopSl (TensorSl ll lr, TensorSl rl rr) = validTensorSplitOf Yes (ll, rl) && validTensorSplitOf Yes (lr, rr)
+validSplitOf IdSl (TensorSl ll lr, TensorSl rl rr) = validSplitOf (TensorSl (Sub IdSl) (Sub IdSl)) (TensorSl ll lr, TensorSl rl rr)
 validSplitOf (TensorSl l r) (TensorSl ll lr, TensorSl rl rr) = validTensorSplitOf l (ll, rl) && validTensorSplitOf r (lr, rr)
 validSplitOf (CommaSl _ s) (CommaSl No l, CommaSl No r) = validCommaSplitOf s (l, r)
 validSplitOf (CommaSl s _) (CommaSl l No, CommaSl r No) = validCommaSplitOf s (l, r)
 validSplitOf s (l, r) = error $ "Unhandled " ++ show (s, (l, r))
 
 validCommaSplitOf :: Choice SlI -> (Choice SlI, Choice SlI) -> Bool
-validCommaSplitOf Yes (Sub l, Sub r) = validSplitOf TopSl (l, r)
 validCommaSplitOf (Sub s) (Sub l, Sub r) = validSplitOf s (l, r)
 validCommaSplitOf _ _ = False
 
 validTensorSplitOf :: Choice SlI -> (Choice SlI, Choice SlI) -> Bool
-validTensorSplitOf Yes (Yes, No) = True
-validTensorSplitOf Yes (No, Yes) = True
 validTensorSplitOf No (No, No) = True
-validTensorSplitOf Yes (Sub l, Sub r) = validSplitOf TopSl (l, r)
 validTensorSplitOf (Sub s) (Sub l, Sub r) = validSplitOf s (l, r)
 validTensorSplitOf (Sub s) (No, Sub r) = weakenableTo r s
 validTensorSplitOf (Sub s) (Sub l, No) = weakenableTo l s
@@ -129,12 +116,12 @@ semPalDepth OriginSemPal = 0
 semPalDepth (CommaSemPal l _) = 1 + semPalDepth l
 semPalDepth (TensorSemPal _ l _ _) = 1 + semPalDepth l
 
-semPalTopSlice :: SemPal -> SlL
-semPalTopSlice pal = SlL (semPalDepth pal) TopSl
+semPalIdSlice :: SemPal -> SlL
+semPalIdSlice pal = SlL (semPalDepth pal) IdSl
 
 lookupSlice :: SemPal -> SlI -> SlL
--- lookupSlice pal TopSlI = semEnvTopSlice pal
-lookupSlice pal TopSl = semPalTopSlice pal
+-- lookupSlice pal IdSlI = semEnvIdSlice pal
+lookupSlice pal IdSl = semPalIdSlice pal
 lookupSlice pal OneSl = SlL 0 OneSl
 -- lookupSlice (CommaSemPal l _) (LeftCommaSl s) = lookupSlice l s
 -- lookupSlice (CommaSemPal _ r) (RightCommaSl s) = lookupSlice r s
@@ -143,7 +130,6 @@ lookupSlice (CommaSemPal _ r) (CommaSl No (Sub s)) = lookupSlice r s -- FIXME: I
 lookupSlice (TensorSemPal sl l sr r) (TensorSl l' r') = (lookupSliceChoice sl l l') <> (lookupSliceChoice sr r r')
 
 lookupSliceChoice :: SlL -> SemPal -> Choice SlI -> SlL
-lookupSliceChoice s pal Yes = s
 lookupSliceChoice s pal No = SlEmpty
 lookupSliceChoice _ pal (Sub s') = lookupSlice pal s'
 
