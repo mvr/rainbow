@@ -243,7 +243,7 @@ synth s (Var i) = do
     Marked -> throwError $ "Cannot use variable " ++ show i ++ " because it is marked"
     Global -> return ty
     Col c -> do
-      when (not $ c `weakenableTo` s) $ throwError $ "Cannot use variable " ++ show i ++ " because the variable with annotation " ++ show c ++ " is not usable in slice " ++ show s
+      when (not $ s `cellTo` c) $ throwError $ "Cannot use variable " ++ show i ++ " because the variable with annotation " ++ show c ++ " is not usable in slice " ++ show s
       return ty
 
 synth s (ZeroVar i) = do

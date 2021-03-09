@@ -43,28 +43,27 @@ instance Monoid SlI where
   mempty = OneSl
 
 -- FIXME: incomplete
-weakenableTo :: SlI -> SlI -> Bool
-weakenableTo OneSl _ = True
-weakenableTo IdSl IdSl = True
-weakenableTo IdSl _ = False
-weakenableTo (TensorSl (Sub l) (Sub r)) IdSl = weakenableTo l IdSl && weakenableTo r IdSl
-weakenableTo (TensorSl _ _) IdSl = False
-weakenableTo (TensorSl l1 r1) (TensorSl l2 r2) = tchoice l1 l2 && tchoice r1 r2
+cellTo :: SlI -> SlI -> Bool
+cellTo _ OneSl = True
+cellTo IdSl IdSl = True
+cellTo _ IdSl = False
+cellTo IdSl (TensorSl l r) = cellTo (TensorSl (Sub IdSl) (Sub IdSl)) (TensorSl l r)
+cellTo (TensorSl l1 r1) (TensorSl l2 r2) = tchoice l1 l2 && tchoice r1 r2
   where tchoice No No = True
-        tchoice (Sub s1) (Sub s2) = weakenableTo s1 s2
+        tchoice (Sub s1) (Sub s2) = cellTo s1 s2
         tchoice _ _ = False
-weakenableTo (CommaSl l1 r1) IdSl = weakenableTo (CommaSl l1 r1) (CommaSl (Sub IdSl) (Sub IdSl))
-weakenableTo (CommaSl l1 r1) (CommaSl l2 r2) = commaWeakenableTo l1 l2 && commaWeakenableTo r1 r2
-weakenableTo SummonedUnitSl SummonedUnitSl = True
-weakenableTo l r = error $ "Unhandled " ++ show (l, r)
+cellTo IdSl (CommaSl l1 r1) = cellTo (CommaSl (Sub IdSl) (Sub IdSl)) (CommaSl l1 r1)
+cellTo (CommaSl l1 r1) (CommaSl l2 r2) = commaCellTo l1 l2 && commaCellTo r1 r2
+cellTo SummonedUnitSl SummonedUnitSl = True
+cellTo l r = error $ "Unhandled " ++ show (l, r)
 
-commaWeakenableTo :: Choice SlI -> Choice SlI -> Bool
-commaWeakenableTo No _ = True
-commaWeakenableTo (Sub s1) (Sub s2) = weakenableTo s1 s2
-commaWeakenableTo _ _ = False
+commaCellTo :: Choice SlI -> Choice SlI -> Bool
+commaCellTo _ No = True
+commaCellTo (Sub s1) (Sub s2) = cellTo s1 s2
+commaCellTo _ _ = False
 
 validSplitOf :: SlI -> (SlI, SlI) -> Bool
-validSplitOf s (l, r) = weakenableTo (l <> r) s
+validSplitOf s (l, r) = cellTo s (l <> r)
 
 data UnitI where
   HereUnitI :: UnitI
