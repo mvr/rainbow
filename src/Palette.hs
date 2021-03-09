@@ -63,25 +63,8 @@ commaWeakenableTo No _ = True
 commaWeakenableTo (Sub s1) (Sub s2) = weakenableTo s1 s2
 commaWeakenableTo _ _ = False
 
--- FIXME: incomplete
 validSplitOf :: SlI -> (SlI, SlI) -> Bool
-validSplitOf OneSl (OneSl, OneSl) = True
-validSplitOf IdSl (TensorSl ll lr, TensorSl rl rr) = validSplitOf (TensorSl (Sub IdSl) (Sub IdSl)) (TensorSl ll lr, TensorSl rl rr)
-validSplitOf (TensorSl l r) (TensorSl ll lr, TensorSl rl rr) = validTensorSplitOf l (ll, rl) && validTensorSplitOf r (lr, rr)
-validSplitOf (CommaSl _ s) (CommaSl No l, CommaSl No r) = validCommaSplitOf s (l, r)
-validSplitOf (CommaSl s _) (CommaSl l No, CommaSl r No) = validCommaSplitOf s (l, r)
-validSplitOf s (l, r) = error $ "Unhandled " ++ show (s, (l, r))
-
-validCommaSplitOf :: Choice SlI -> (Choice SlI, Choice SlI) -> Bool
-validCommaSplitOf (Sub s) (Sub l, Sub r) = validSplitOf s (l, r)
-validCommaSplitOf _ _ = False
-
-validTensorSplitOf :: Choice SlI -> (Choice SlI, Choice SlI) -> Bool
-validTensorSplitOf No (No, No) = True
-validTensorSplitOf (Sub s) (Sub l, Sub r) = validSplitOf s (l, r)
-validTensorSplitOf (Sub s) (No, Sub r) = weakenableTo r s
-validTensorSplitOf (Sub s) (Sub l, No) = weakenableTo l s
-validTensorSplitOf _ _ = False
+validSplitOf s (l, r) = weakenableTo (l <> r) s
 
 data UnitI where
   HereUnitI :: UnitI
