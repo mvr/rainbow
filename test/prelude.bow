@@ -1,29 +1,37 @@
 let id : (A : U<0>) -> (A -> A) =
     fun a -> fun x -> x
 
+don't let tensorpr : (A : U<0>) (B : U<0>) (p : _A ⊗ _B) -> _A =
+  fun A B p ->  
+  match p at _A with       
+    <<(x at _A), (y at _B)>> -> x
+
 let sym : (A : U<0>) (B : U<0>) (p : _A ⊗ _B) -> (_B ⊗ _A) = 
   fun A B p -> 
-  tensormatch p at _B ⊗ _A with
-    <<x, y>> -> <<y, x>>
+  match p at _B ⊗ _A with
+    <<(x at _A), (y at _B)>> -> <<y, x>>
+
+-- let lax : (A : U<0>) (B : _A -> U<0>) (n : ♮((x : _A) ⊗ _B _x)) -> (y : ♮ _A) * ♮ (_B (undout _y)) =
+--   fun A B n ->
+--   match (undout n) at ((y : ♮ _A) * ♮ (_B (undout _y))) with
+--     (undin <<(_x at _A), (_y at _B _x)>>[1, 1]) -> <undin _x, undin _y>
 
 let lax : (A : U<0>) (B : _A -> U<0>) (n : ♮((x : _A) ⊗ _B _x)) -> (y : ♮ _A) * ♮ (_B (undout _y)) =
   fun A B n ->
-  tensormatch (undout n) at z -> ((y : ♮ _A) * ♮ (_B (undout _y))) with
-    <<x, y>> -> <undin _x, undin _y>
+  match (undout n) at ((y : ♮ _A) * ♮ (_B (undout _y))) with
+    <<(x at _A), (y at _B _x)>> -> <undin _x, undin _y>
 
-let assocsimple : (A : U<0>) (B : U<0>) (C : U<0>) (p : (_A ⊗ _B) ⊗ _C) -> (_A ⊗ (_B ⊗ _C)) = 
-  fun A B C t -> 
-  tensormatch t at _A ⊗ (_B ⊗ _C) with
-  <<p, z>>[pc,zc] -> 
-    tensormatch (pc/pc' ⊗ zc/zc') | p, z at (pc' ⊗ zc') | (p'[pc'] : _A ⊗ _B) (z'[zc'] : _C) -> _A ⊗ (_B ⊗ _C) with
-    p' = <<x , y>> -> <<x, <<y, z'>> >>
+let unlax : (A : U<0>) (B : _A -> U<0>) (m : (y : ♮ _A) * ♮ (_B (undout _y))) -> ♮((x : _A) ⊗ _B _x)  =
+  fun A B m -> undin << undout (fst _m), undout (snd _m) >>[1, 1]
 
-let assocdep : (A : U<0>) (B : _A -> U<0>) (C : (x : _A) -> ((_B _x) -> U<0>))
-    (t : (p : ((x : _A) ⊗ _B _x)) ⊗ (tensormatch _p at U<0> with <<x, y>> -> _C _x _y)) -> ((x : _A) ⊗ ((y : _B _x) ⊗ (_C _x _y))) = 
-    fun A B C t ->
-    tensormatch t at ((x : _A) ⊗ ((y : _B _x) ⊗ (_C _x _y))) with
-     <<p, z>>[pc,zc] -> 
-       tensormatch (pc/pc' ⊗ zc/zc') | p, z 
-                at (pc' ⊗ zc')       | (p'[pc'] : (x : _A) ⊗ _B _x) (z'[zc'] : (tensormatch _p' at U<0> with <<x, y>> -> _C _x _y)) 
-                -> ((x : _A) ⊗ ((y : _B _x) ⊗ (_C _x _y))) with
-       p' = <<x , y>> -> <<x, <<y, z'>> >>  
+let assoc : (A : U<0>) (B : U<0>) (C : U<0>) (p : _A ⊗ (_B ⊗ _C)) -> ((_A ⊗ _B) ⊗ _C) = 
+  fun A B C p -> 
+  match p at (_A ⊗ _B) ⊗ _C with
+    <<(x at _A), <<(y at _B), (z at _C)>> >> -> << <<x, y>>, z >>
+
+let path_comp : (A : U<0>) (a b c : A) (p : Id A a b) (q : Id A b c) -> Id A a c =
+  fun A a b c p q -> 
+  (match <a, <b, p> > at t -> (c' : A) (q' : Id A (fst (snd t)) c') -> Id A (fst t) c' with
+    < (x at A), <(x at A), refl (x at A)> > -> (fun c' q' -> q')
+  ) c q
+  

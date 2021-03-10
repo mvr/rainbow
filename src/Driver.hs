@@ -151,7 +151,9 @@ bindsExtLam n state@(BindState { binds }) = state { binds = (BindTerm n Nothing)
 bindsExtHom :: Colour -> Colour -> Maybe C.Ident -> BindState -> BindState
 bindsExtHom bodyc yc y state@(BindState { binds, bindPalette })
   = state { bindPalette = TensorPal (LabelPal bodyc bindPalette) (LabelPal yc OnePal),
-            binds = (BindTerm y (Just yc)):binds }
+            binds = (BindTerm y (Just yc)):(fmap addColour binds) }
+  where addColour (BindTerm y Nothing) = BindTerm y (Just bodyc)
+        addColour b = b
 
 bindsExtMany :: [BindEntry] -> BindState -> BindState
 bindsExtMany ns state@(BindState { binds }) = state { binds = ns ++ binds }

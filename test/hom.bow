@@ -1,0 +1,13 @@
+let homunit : (A B : U<0>) -> _A -> (_B ⊸ (_A ⊗ _B)) = 
+  fun A B a -> hom b -o <<a, b>>
+
+let homcounit : (A B : U<0>) -> ((_B ⊸ _A) ⊗ _B) -> _A =
+  fun A B t -> 
+  match t at _A with
+    <<(f at _B ⊸ _A) , (b at _B)>> -> (f @ b)
+
+let homcurry : (A B C : U<0>) -> ((_A ⊗ _B) ⊸ _C) -> (_A ⊸ (_B ⊸ _C)) = 
+  fun A B C f ->
+  hom a -o
+  hom b -o
+  (f @ << a, b >>)

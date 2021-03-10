@@ -82,12 +82,11 @@ ctxExtValZero :: Value -> VTy -> SemCtx -> SemCtx
 ctxExtValZero a aty (SemCtx pal vars) = SemCtx pal ((CtxEntry a aty Marked):vars)
 
 ctxExtHom :: Value -> VTy -> SemCtx -> SemCtx
-ctxExtHom = undefined
--- ctxExtHom t ty (SemCtx pal vars)
---   = SemCtx { ctxPal = Palette [TensorPal pal (Palette [])],
---              ctxVars = (CtxTerm t ty (Just rightCol)) : (fmap (ctxEntryWkColHom pal) vars)
---            }
---   where rightCol = RightSub 0 TopColour
+ctxExtHom a aty (SemCtx pal vars) = SemCtx (TensorSemPal sl pal sr OneSemPal) ((CtxEntry a aty (Col c)):(fmap entryLiftTensor vars))
+  where d = semPalDepth pal
+        sl = SlL d IdSl
+        sr = SlL (d+1) (TensorSl No (Sub IdSl))
+        c  = (TensorSl No (Sub IdSl))
 
 -- patCartTele :: Pat -> (Palette, [CtxEntry])
 -- patCartTele = undefined
@@ -219,12 +218,12 @@ check s (Hom aty bty) (VUniv l) = do
   local (ctxExtHom var atyval) $ check (TensorSl (Sub s) (Sub IdSl)) bty (VUniv l)
 check s (Hom aty bclo) t = throwError "Expected universe"
 
--- check s (HomLam b) (VHom aty bclo) = do
---   lev <- asks ctxLen
---   let var = makeVarVal aty lev
---   let bty = N.doClosure bclo var
---   local (ctxExtHom var aty) $ check b bty
--- check s (HomLam b) ty = throwError "Unexpected hom lambda"
+check s (HomLam b) (VHom aty bclo) = do
+  lev <- asks ctxLen
+  let var = makeVarVal aty lev
+  let bty = N.doClosure bclo var
+  local (ctxExtHom var aty) $ check (TensorSl (Sub s) (Sub IdSl)) b bty
+check s (HomLam b) ty = throwError "Unexpected hom lambda"
 
 check s a ty = do
   -- e <- asks ctxToEnv
