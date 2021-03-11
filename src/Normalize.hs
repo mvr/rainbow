@@ -66,6 +66,9 @@ envLookup (SemEnv _ env) i = env !! i
 envLookupSlice :: SemEnv -> SlI -> SlL
 envLookupSlice (SemEnv pal _) s = lookupSlice pal s
 
+envLookupUnit :: SemEnv -> UnitI -> UnitL
+envLookupUnit (SemEnv pal _) u = lookupUnit pal u
+
 doApp :: Value -> Value -> Value
 doApp (VLam clos) a = doClosure clos a
 doApp (VNeutral (VPi aty bclo) ne) a =
@@ -188,6 +191,8 @@ eval env (UndOut a) = doUndOut (eval env a)
 
 eval env (Tensor aty bty) = VTensor (eval env aty) (Closure bty env)
 eval env (TensorPair asl a bsl b) = VTensorPair (envLookupSlice env asl) (eval env a) (envLookupSlice env bsl) (eval env b)
+eval env Unit = VUnit
+eval env (UnitIn u) = VUnitIn (envLookupUnit env u)
 eval env (Hom aty bty) = VHom (eval env aty) (Closure bty env)
 eval env (HomLam b) = VHomLam (Closure b env)
 eval env (HomApp fsl f asl a) = doHomApp (envLookupSlice env fsl) (eval env f) (envLookupSlice env asl) (eval env a)
@@ -288,6 +293,7 @@ eqTy size (VTensor aty1 bclo1) (VTensor aty2 bclo2) =
   let var = makeVarValS aty1 size
   in eqTy size aty1 aty2 &&
      eqTy (extSizeLam size) (doClosure bclo1 var) (doClosure bclo2 var)
+eqTy size VUnit VUnit = True
 eqTy size (VHom aty1 bclo1) (VHom aty2 bclo2) =
   let var = makeVarValS aty1 size
   in eqTy size aty1 aty2 &&

@@ -212,6 +212,11 @@ check s t@(TensorPair asl a bsl b) (VTensor aty bclo) = do
   check bsl b bty
 check s (TensorPair _ _ _ _) ty = throwError "Unexpected tensor intro"
 
+check s Unit (VUniv l) = return ()
+
+check s (UnitIn u) VUnit = do
+  when (not $ validUnitOf s u) $ throwError $ "Invalid unit of " ++ show s ++ " into " ++ show u
+
 check s (Hom aty bty) (VUniv l) = do
   check OneSl aty (VUniv l)
   (atyval, var) <- evalAndVar aty
@@ -406,6 +411,7 @@ checkTy s (Tensor aty bty) = do
   checkTy OneSl aty
   (atyval, var) <- evalAndVar aty
   local (ctxExtValZero var atyval) $ checkTy OneSl bty
+checkTy s Unit = return ()
 checkTy s (Hom aty bty) = do
   checkTy OneSl aty
   (atyval, var) <- evalAndVar aty

@@ -124,17 +124,15 @@ bindColour (LabelPal i s) col
 bindColour (CommaPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
-    (Nothing, Just S.IdSl) -> Just (S.CommaSl S.No (S.Sub S.IdSl))
-    (Just S.IdSl, Nothing) -> Just (S.CommaSl (S.Sub S.IdSl) S.No)
     (Nothing, Just r) -> Just (S.CommaSl S.No (S.Sub r))
     (Just l, Nothing) -> Just (S.CommaSl (S.Sub l) S.No)
+    (Just l, Just r) -> Just (S.CommaSl S.No (S.Sub r))
 bindColour (TensorPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
-    (Nothing, Just S.IdSl) -> Just (S.TensorSl S.No (S.Sub S.IdSl))
-    (Just S.IdSl, Nothing) -> Just (S.TensorSl (S.Sub S.IdSl) S.No)
     (Nothing, Just r) -> Just (S.TensorSl S.No (S.Sub r))
     (Just l, Nothing) -> Just (S.TensorSl (S.Sub l) S.No)
+    (Just l, Just r) -> Just (S.TensorSl S.No (S.Sub r))
 
 bindSlice :: Slice -> BindM (Maybe S.SlI)
 bindSlice (Slice cols) = do
@@ -142,8 +140,28 @@ bindSlice (Slice cols) = do
   return $ mconcat <$> traverse (bindColour pal) cols
 bindSlice (SliceOne) = return $ Just S.OneSl
 
-bindUnit :: BindPalette -> C.Unit -> Maybe S.UnitI
-bindUnit = undefined
+bindUnitLabel :: BindPalette -> C.Ident -> Maybe S.UnitI
+bindUnitLabel OnePal col = Nothing
+bindUnitLabel OriginPal col = Nothing
+bindUnitLabel (UnitPal u) col | u == col = Just S.HereUnit -- Id
+bindUnitLabel (LabelPal i s) col = bindUnitLabel s col
+bindUnitLabel (CommaPal l r) col =
+  case (bindUnitLabel l col, bindUnitLabel r col) of
+    (Nothing, Nothing) -> Nothing
+    (Nothing, Just r) -> Just (S.RightCommaUnit r)
+    (Just l, Nothing) -> Just (S.LeftCommaUnit l)
+    (Just l, Just r) -> Just (S.RightCommaUnit r)
+bindUnitLabel (TensorPal l r) col =
+  case (bindUnitLabel l col, bindUnitLabel r col) of
+    (Nothing, Nothing) -> Nothing
+    (Nothing, Just r) -> Just (S.TensorUnit S.No (S.Sub r))
+    (Just l, Nothing) -> Just (S.TensorUnit (S.Sub l) S.No)
+    (Just l, Just r) -> Just (S.TensorUnit S.No (S.Sub r))
+
+bindUnit :: C.Unit -> BindM (Maybe S.UnitI)
+bindUnit (C.UnitList us) = do
+  pal <- asks bindPalette
+  return $ mconcat <$> traverse (bindUnitLabel pal) us
 
 bindsExtLam :: Maybe C.Ident -> BindState -> BindState
 bindsExtLam n state@(BindState { binds }) = state { binds = (BindTerm n Nothing):binds }
@@ -232,6 +250,7 @@ bind (C.Snd p) = S.Snd <$> (bind p)
 bind (C.Refl a) = S.Refl <$> bind a
 bind (C.UndIn a) = S.UndIn <$> (bind a)
 bind (C.UndOut a) = S.UndOut <$> (bind a)
+bind (C.Unit) = pure S.Unit
 bind (C.Pi [] b) = bind b
 bind (C.Pi (C.TeleCell n ty : cells) b) = S.Pi <$> (bind ty) <*> (local (bindsExtLam n) $ bind (C.Pi cells b))
 bind (C.Sg [] b) = bind b
@@ -291,6 +310,10 @@ bind (C.HomApp sl f sr a) = do
     boundf
     (fromJust $ boundsr)
     bounda
+
+bind (C.UnitIn u) = do
+  boundu <- bindUnit u
+  return $ S.UnitIn (fromJust $ boundu) -- FIXME: error handling
 
 bind (C.Match t z mot patterm br) = do
   boundt <- bind t

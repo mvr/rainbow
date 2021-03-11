@@ -4,12 +4,6 @@ module Syntax where
 import Palette
 
 type UnivLevel = Int
-  -- deriving (Show, Eq)
-data Tele
-  deriving (Show, Eq)
--- data TeleSubst where
---   TeleSubst :: PaletteSubst -> [Term] -> TeleSubst
---   deriving (Show, Eq)
 
 type Ty = Term
 
@@ -22,7 +16,6 @@ data Pat where
   ReflPat :: Pat -> Pat
   TensorPat :: Pat -> Pat -> Pat
   UndInPat :: Pat -> Pat
-  -- IdPat :: Pat -> Pat -> Pat
   deriving (Show, Eq)
 
 data PatShape where

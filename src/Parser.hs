@@ -56,6 +56,8 @@ slice = try ( symbol "_" *> pure SliceOmitted )
   <|> try ( symbol "top" *> pure SliceTop)
   <|> (Slice <$> many ident)
 
+unit :: Parser Unit
+unit = (UnitList <$> many ident)
 
 -- colour :: Parser Colour
 -- colour = try (symbol "⊤" *> pure ())
@@ -100,6 +102,8 @@ atomic =
     return (Check a b)
   )
   <|> try ( Univ <$> (symbol "U<" *> L.decimal <* symbol ">"))
+  <|> try ( Unit <$ symbol "Unit" )
+  <|> try ( UnitIn <$> (symbol "unitin[" *> unit <* symbol "]"))
   <|> try ( UndIn <$> (symbol "undin" *> term))
   <|> try ( UndOut <$> (symbol "undout" *> term))
   -- <|> try ( Pair <$> (symbol "<" *> term <*> symbol "," <*> term <* symbol ">"))

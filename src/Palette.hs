@@ -30,7 +30,7 @@ data SlI where
 -- This combining operation like the tensor internal to a
 -- fixed palette.
 instance Semigroup SlI where
-  -- Cheating of course, we error if things don't line up.
+  -- FIXME: Cheating of course, we error if things don't line up.
   OneSl <> s = s
   s <> OneSl = s
   -- (LeftCommaSl l) <> (LeftCommaSl r) = LeftCommaSl (l <> r)
@@ -65,15 +65,40 @@ commaCellTo _ _ = False
 validSplitOf :: SlI -> (SlI, SlI) -> Bool
 validSplitOf s (l, r) = cellTo s (l <> r)
 
-data UnitI where
-  HereUnitI :: UnitI
-  LeftCommaUnitI :: UnitI -> UnitI
-  RightCommaUnitI :: UnitI -> UnitI
-  LeftTensorUnitI :: UnitI -> UnitI
-  RightTensorUnitI :: UnitI -> UnitI
+validUnitOf :: SlI -> UnitI -> Bool
+validUnitOf _ OneUnit = True
+validUnitOf IdSl HereUnit = True
+validUnitOf (CommaSl No r) (LeftCommaUnit u) = False
+validUnitOf (CommaSl (Sub l) r) (LeftCommaUnit u) = validUnitOf l u
+validUnitOf (CommaSl l No) (RightCommaUnit u) = False
+validUnitOf (CommaSl l (Sub r)) (RightCommaUnit u) = validUnitOf r u
+validUnitOf (TensorSl l r) (TensorUnit u v) = tensorValidUnitOf l u && tensorValidUnitOf r v
+validUnitOf s u = error $ "Unhandled " ++ show (s, u)
 
+tensorValidUnitOf :: Choice SlI -> Choice UnitI -> Bool
+tensorValidUnitOf No No = True
+tensorValidUnitOf (Sub s) (Sub u) = validUnitOf s u
+tensorValidUnitOf _ _ = False
+
+data UnitI where
+  HereUnit :: UnitI
+  OneUnit :: UnitI
+  LeftCommaUnit :: UnitI -> UnitI
+  RightCommaUnit :: UnitI -> UnitI
+  TensorUnit :: Choice UnitI -> Choice UnitI -> UnitI
   deriving (Show, Eq)
 
+instance Semigroup UnitI where
+  OneUnit <> s = s
+  s <> OneUnit = s
+  (LeftCommaUnit l) <> (LeftCommaUnit r) = LeftCommaUnit (l <> r)
+  (RightCommaUnit l) <> (RightCommaUnit r) = RightCommaUnit (l <> r)
+  (TensorUnit ll lr) <> (TensorUnit rl rr) = TensorUnit (ll <> rl) (lr <> rr)
+
+instance Monoid UnitI where
+  mempty = OneUnit
+
+-- What was this SlEmpty constructor for again?
 data SlL = SlL Int SlI | SlEmpty
   deriving (Show, Eq)
 data UnitL = UnitL Int UnitI
@@ -92,6 +117,9 @@ palToSemPal = undefined
 
 instance Semigroup SlL where
 instance Monoid SlL where
+
+instance Semigroup UnitL where
+instance Monoid UnitL where
 
 semPalDepth :: SemPal -> Int
 semPalDepth OriginSemPal = 0
@@ -115,8 +143,16 @@ lookupSliceChoice :: SlL -> SemPal -> Choice SlI -> SlL
 lookupSliceChoice s pal No = SlEmpty
 lookupSliceChoice _ pal (Sub s') = lookupSlice pal s'
 
-sliceIxToLvl :: Palette -> SlI -> SlL
-sliceIxToLvl = undefined
+lookupUnit :: SemPal -> UnitI -> UnitL
+lookupUnit pal OneUnit = UnitL 0 OneUnit
+lookupUnit (CommaSemPal l _) (LeftCommaUnit u) = lookupUnit l u
+lookupUnit (CommaSemPal _ r) (RightCommaUnit u) = lookupUnit r u
+lookupUnit (TensorSemPal _ l _ r) (TensorUnit (Sub l') (Sub r')) = lookupUnit l l' <> lookupUnit r r'
+lookupUnit (TensorSemPal _ l _ r) (TensorUnit (Sub l') No) = lookupUnit l l'
+lookupUnit (TensorSemPal _ l _ r) (TensorUnit No (Sub r')) = lookupUnit r r'
 
-sliceLvlToIx :: Palette -> SlL -> SlI
-sliceLvlToIx = undefined
+-- sliceIxToLvl :: Palette -> SlI -> SlL
+-- sliceIxToLvl = undefined
+
+-- sliceLvlToIx :: Palette -> SlL -> SlI
+-- sliceLvlToIx = undefined
