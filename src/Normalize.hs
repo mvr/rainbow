@@ -52,7 +52,7 @@ instance Zero Neutral where
   zero (NFst p) = NFst (zero p)
   zero (NSnd p) = NSnd (zero p)
   zero (NUndOut p) = NUndOut (zero p)
-  zero (NHomApp f a) = NHomApp (zero f) (zero a)
+  zero (NHomApp fsl f asl a) = NHomApp (SlL 0 OneSl) (zero f) (SlL 0 OneSl) (zero a)
 
 instance Zero Normal where
   zero (Normal ty a) = Normal (zero ty) (zero a)
@@ -94,14 +94,13 @@ doUndOut (VNeutral (VUnd ty) ne) = VNeutral ty (NUndOut ne)
 doUndOut (VNeutral ty ne) = error $ "Unexpected neutral " ++ show ty ++ "in doUndOut"
 doUndOut t = error $ "Unexpected term " ++ show t ++ "in doUndOut"
 
-doHomApp :: Value -> Value -> Value
-doHomApp = undefined
--- doHomApp (VLam clos) a = doClosure clos a
--- doHomApp (VNeutral (VPi aty bclo) ne) a =
---   let bty = doClosure bclo a in
---     VNeutral bty (NHomApp ne (Normal aty a))
--- doHomApp (VNeutral ty ne) a = error $ "Unexpected neutral " ++ show ty ++ "in doHomApp"
--- doHomApp t a = error $ "Unexpected term " ++ show t ++ "in doHomApp"
+doHomApp :: SlL -> Value -> SlL -> Value -> Value
+doHomApp fsl (VLam clos) asl a = doHomClosure fsl clos asl a
+doHomApp fsl (VNeutral (VPi aty bclo) ne) asl a =
+  let bty = doHomClosure fsl bclo asl a in
+    VNeutral bty (NHomApp fsl ne asl (Normal aty a))
+doHomApp _ (VNeutral ty ne) _ a = error $ "Unexpected neutral " ++ show ty ++ "in doHomApp"
+doHomApp _ t _ a = error $ "Unexpected term " ++ show t ++ "in doHomApp"
 
 doMatch :: Value -> Closure -> PatShape -> VPat -> ClosurePat -> Value
 doMatch a mot patsh pat br = case matchPat patsh a of
@@ -147,6 +146,10 @@ doClosure :: Closure -> Value -> Value
 doClosure (Closure t (SemEnv pal env)) a = eval (SemEnv pal (a : env)) t
 doClosure (ClosureFunc f) a = f a
 
+doHomClosure :: SlL -> Closure -> SlL -> Value -> Value
+doHomClosure csl (Closure t (SemEnv pal env)) asl a = eval (SemEnv (TensorSemPal csl pal asl OneSemPal) (a : env)) t
+doHomClosure _ (ClosureFunc f) _ a = f a
+
 doClosurePat :: ClosurePat -> SemTele -> Value
 doClosurePat (ClosurePat t env) env' = eval (semEnvComma env env') t
 
@@ -186,8 +189,8 @@ eval env (UndOut a) = doUndOut (eval env a)
 eval env (Tensor aty bty) = VTensor (eval env aty) (Closure bty env)
 eval env (TensorPair asl a bsl b) = VTensorPair (envLookupSlice env asl) (eval env a) (envLookupSlice env bsl) (eval env b)
 eval env (Hom aty bty) = VHom (eval env aty) (Closure bty env)
-eval env (HomLam b) = undefined -- VHomLam (Closure b env)
-eval env (HomApp _ f _ a) = doHomApp (eval env f) (eval env a)
+eval env (HomLam b) = VHomLam (Closure b env)
+eval env (HomApp fsl f asl a) = doHomApp (envLookupSlice env fsl) (eval env f) (envLookupSlice env asl) (eval env a)
 
 -- evalCartPatToPal :: SemPal -> Pat -> SemPal -- Really a `SemPalExt`
 -- evalCartPatToPal pal OnePat = undefined
@@ -342,8 +345,10 @@ eqNE size (NFst p1) (NFst p2) = eqNE size p1 p2
 eqNE size (NSnd p1) (NSnd p2) = eqNE size p1 p2
 eqNE size (NUndOut p1) (NUndOut p2) = eqNE size p1 p2
 
-eqNE size (NHomApp f1 (Normal aty1 a1)) (NHomApp f2 (Normal aty2 a2)) =
-  eqNE size f1 f2 && eqNF size (aty1, a1) (aty2, a2)
+eqNE size (NHomApp fsl1 f1 asl1 (Normal aty1 a1)) (NHomApp fsl2 f2 asl2 (Normal aty2 a2)) =
+  eqNE size f1 f2 && eqNF size (aty1, a1) (aty2, a2) &&
+  fsl1 == fsl2 &&
+  asl1 == asl2
 eqNE _ _ _  = False
 
 -- normalize :: SemEnv -> Term -> Ty -> Term

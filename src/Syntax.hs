@@ -210,7 +210,7 @@ data Neutral where
 
   NUndOut :: Neutral -> Neutral
 
-  NHomApp :: Neutral -> Normal -> Neutral
+  NHomApp :: SlL -> Neutral -> SlL -> Normal -> Neutral
   deriving (Show)
 
 data Normal where
