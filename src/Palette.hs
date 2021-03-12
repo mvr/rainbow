@@ -30,17 +30,19 @@ data SlI where
 -- This combining operation like the tensor internal to a
 -- fixed palette.
 instance Semigroup SlI where
+  OneSl <> OneSl = OneSl
   -- FIXME: Cheating of course, we error if things don't line up.
-  OneSl <> s = s
-  s <> OneSl = s
-  -- (LeftCommaSl l) <> (LeftCommaSl r) = LeftCommaSl (l <> r)
-  -- (RightCommaSl l) <> (RightCommaSl r) = RightCommaSl (l <> r)
   (CommaSl (Sub l) No) <> (CommaSl (Sub r) No) = CommaSl (Sub $ l <> r) No
   (CommaSl No (Sub l)) <> (CommaSl No (Sub r)) = CommaSl No (Sub $ l <> r)
   (TensorSl ll lr) <> (TensorSl rl rr) = TensorSl (ll <> rl) (lr <> rr)
-  IdSl <> SummonedUnitSl = IdSl
-  SummonedUnitSl <> IdSl = IdSl
+  s <> SummonedUnitSl = s
+  SummonedUnitSl <> s = s
   l <> r = error $ "Unhandled " ++ show (l, r)
+
+slackSliceTensor :: SlI -> SlI -> SlI
+slackSliceTensor OneSl s = s
+slackSliceTensor s OneSl = s
+slackSliceTensor s t = s <> t
 
 instance Monoid SlI where
   mempty = OneSl

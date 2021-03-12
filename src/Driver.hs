@@ -141,7 +141,7 @@ bindColour (TensorPal l r) col =
 bindSlice :: Slice -> BindM (Maybe S.SlI)
 bindSlice (Slice cols) = do
   pal <- asks bindPalette
-  return $ mconcat <$> traverse (bindColour pal) cols
+  return $ foldr S.slackSliceTensor S.OneSl <$> traverse (bindColour pal) cols
 bindSlice SliceOne = return $ Just S.OneSl
 bindSlice (SliceSummonedUnit l) = return $ Just S.SummonedUnitSl
 bindSlice SliceTop = return $ Just S.IdSl
