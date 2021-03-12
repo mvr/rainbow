@@ -207,7 +207,7 @@ eval env (HomApp fsl f asl a) = doHomApp (envLookupSlice env fsl) (eval env f) (
 --------------------------------------------------------------------------------
 -- Equality
 
-data Size = Size {- ctx length -} Int {- pal left depth -} Int
+data Size = Size {- pal left depth -} Int {- ctx length -} Int
 
 extSize :: Size -> SemTele -> Size
 extSize (Size depth size) (SemTele pal env) = (Size (depth + 1) (size + length env))

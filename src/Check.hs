@@ -102,7 +102,7 @@ ctxLen :: SemCtx -> Int
 ctxLen = length . ctxVars
 
 ctxSize :: SemCtx -> Size
-ctxSize ctx = N.Size (ctxLen ctx) (semPalDepth $ ctxPal ctx)
+ctxSize ctx = N.Size (semPalDepth $ ctxPal ctx) (ctxLen ctx)
 
 envExt :: SemEnv -> Value -> SemEnv
 envExt (SemEnv pal env) v = SemEnv pal (v : env)
