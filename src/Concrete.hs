@@ -111,4 +111,5 @@ comprehendPat t = go False t -- Have we been zeroed by an UndIn yet?
 data Decl where
   Def :: Ident -> Term -> Ty -> Decl
   Dont :: Ident -> Term -> Ty -> Decl
+  Postulate :: Ident -> Ty -> Decl
   deriving (Show)

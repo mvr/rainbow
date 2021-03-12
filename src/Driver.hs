@@ -386,5 +386,19 @@ processDecl env@(Env bindings checkCtx) (C.Dont name cbody cty) = do
 
   return env
 
+processDecl env@(Env bindings checkCtx) (C.Postulate name cty) = do
+  let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings Nothing)) 0
+
+  let semEnv = S.ctxToEnv checkCtx
+  let semTy = N.eval semEnv ty
+
+  putStrLn $ "Postulated: " ++ name
+
+  let semTy = N.eval semEnv ty
+      semVar = S.VNeutral semTy (S.NVar (length bindings))
+
+  return (Env ((BindTopLevel name):bindings) (S.ctxExtGlobal semVar semTy checkCtx))
+
+
 emptyEnv :: Env
 emptyEnv = Env [] S.ctxEmpty
