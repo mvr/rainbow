@@ -24,11 +24,13 @@ data Slice where
   Slice :: [Colour] -> Slice
   SliceOne :: Slice
   SliceTop :: Slice
+  SliceSummonedUnit :: C.Ident -> Slice
   deriving (Show, Eq)
 
 providedSlice :: C.Slice -> Slice
 providedSlice (C.Slice cs) = Slice $ fmap NamedCol cs
 providedSlice (C.SliceOne) = SliceOne
+providedSlice (C.SliceSummonedUnit l) = SliceSummonedUnit l
 providedSlice (C.SliceTop) = SliceTop
 
 sliceUnion :: Slice -> Slice -> Slice
@@ -52,6 +54,8 @@ data BindPat where
   PairPat :: BindPat -> BindPat -> BindPat
   ReflPat :: BindPat -> BindPat
   TensorPat :: Colour -> BindPat -> Colour -> BindPat -> BindPat
+  LeftUnitorPat :: BindPat -> BindPat
+  RightUnitorPat :: BindPat -> BindPat
   ZeroTensorPat :: BindPat -> BindPat -> BindPat
   deriving (Show)
 
@@ -70,7 +74,7 @@ data BindEntry = BindTerm {- name -} (Maybe C.Ident) {- colour -} (Maybe Colour)
   deriving (Show)
 
 type SymCounter = Int
-data BindState = BindState {  bindPalette :: BindPalette, binds :: [BindEntry] }
+data BindState = BindState { bindPalette :: BindPalette, binds :: [BindEntry], bindsSummoned :: Maybe C.Ident }
 type BindM = ReaderT BindState (State SymCounter)
 
 bindsLookup :: C.Ident -> BindM Int
@@ -138,30 +142,37 @@ bindSlice :: Slice -> BindM (Maybe S.SlI)
 bindSlice (Slice cols) = do
   pal <- asks bindPalette
   return $ mconcat <$> traverse (bindColour pal) cols
-bindSlice (SliceOne) = return $ Just S.OneSl
+bindSlice SliceOne = return $ Just S.OneSl
+bindSlice (SliceSummonedUnit l) = return $ Just S.SummonedUnitSl
+bindSlice SliceTop = return $ Just S.IdSl
 
-bindUnitLabel :: BindPalette -> C.Ident -> Maybe S.UnitI
-bindUnitLabel OnePal col = Nothing
-bindUnitLabel OriginPal col = Nothing
-bindUnitLabel (UnitPal u) col | u == col = Just S.HereUnit -- Id
-bindUnitLabel (LabelPal i s) col = bindUnitLabel s col
-bindUnitLabel (CommaPal l r) col =
-  case (bindUnitLabel l col, bindUnitLabel r col) of
+findUnitLabel :: BindPalette -> C.Ident -> Maybe S.UnitI
+findUnitLabel OnePal col = Nothing
+findUnitLabel OriginPal col = Nothing
+findUnitLabel (UnitPal u) col | u == col = Just S.HereUnit -- Id
+findUnitLabel (LabelPal i s) col = findUnitLabel s col
+findUnitLabel (CommaPal l r) col =
+  case (findUnitLabel l col, findUnitLabel r col) of
     (Nothing, Nothing) -> Nothing
     (Nothing, Just r) -> Just (S.RightCommaUnit r)
     (Just l, Nothing) -> Just (S.LeftCommaUnit l)
     (Just l, Just r) -> Just (S.RightCommaUnit r)
-bindUnitLabel (TensorPal l r) col =
-  case (bindUnitLabel l col, bindUnitLabel r col) of
+findUnitLabel (TensorPal l r) col =
+  case (findUnitLabel l col, findUnitLabel r col) of
     (Nothing, Nothing) -> Nothing
     (Nothing, Just r) -> Just (S.TensorUnit S.No (S.Sub r))
     (Just l, Nothing) -> Just (S.TensorUnit (S.Sub l) S.No)
     (Just l, Just r) -> Just (S.TensorUnit S.No (S.Sub r))
 
+bindUnitLabel :: Maybe C.Ident -> BindPalette -> C.Ident -> Maybe S.UnitI
+bindUnitLabel (Just summoned) _ u | summoned == u = Just S.SummonedUnit
+bindUnitLabel _ pal u = findUnitLabel pal u
+
 bindUnit :: C.Unit -> BindM (Maybe S.UnitI)
 bindUnit (C.UnitList us) = do
   pal <- asks bindPalette
-  return $ mconcat <$> traverse (bindUnitLabel pal) us
+  summoned <- asks bindsSummoned
+  return $ mconcat <$> traverse (bindUnitLabel summoned pal) us
 
 bindsExtLam :: Maybe C.Ident -> BindState -> BindState
 bindsExtLam n state@(BindState { binds }) = state { binds = (BindTerm n Nothing):binds }
@@ -179,6 +190,10 @@ bindsExtMany ns state@(BindState { binds }) = state { binds = ns ++ binds }
 bindsExtCommaPal :: BindPalette -> BindState -> BindState
 bindsExtCommaPal pal state@(BindState { bindPalette })
   = state { bindPalette = CommaPal bindPalette pal }
+
+bindsExtSlice :: Slice -> BindState -> BindState
+bindsExtSlice (SliceSummonedUnit l) state@(BindState { bindsSummoned }) = state { bindsSummoned = Just l }
+bindsExtSlice _ state = state
 
 genCol :: BindM Colour
 genCol = do
@@ -202,6 +217,8 @@ fillPatCols (C.TensorPat l p r q) = do
            Just c -> pure (NamedCol c)
            Nothing -> genCol
   TensorPat <$> pure l' <*> fillPatCols p <*> pure r' <*> fillPatCols q
+fillPatCols (C.LeftUnitorPat p) = LeftUnitorPat <$> fillPatCols p
+fillPatCols (C.RightUnitorPat p) = RightUnitorPat <$> fillPatCols p
 
 patVars :: BindPat -> [BindEntry]
 patVars p = go Nothing p
@@ -212,6 +229,8 @@ patVars p = go Nothing p
   go c (ZeroVarPat x _) = [BindTerm (Just x) Nothing]
   go c (PairPat p q) = go c q ++ go c p
   go c (TensorPat l p r q) = go (Just r) q ++ go (Just l) p
+  go c (LeftUnitorPat p) = go c p
+  go c (RightUnitorPat p) = go c p
   go c (UndInPat p) = go Nothing p
 
 bindPat :: BindPat -> BindM S.Pat
@@ -230,6 +249,8 @@ bindPat (TensorPat _ p _ q) = do
   q' <- local (bindsExtMany (patVars p)) $ bindPat q
 
   return $ S.TensorPat p' q'
+bindPat (LeftUnitorPat p) = S.LeftUnitorPat <$> bindPat p
+bindPat (RightUnitorPat p) = S.RightUnitorPat <$> bindPat p
 bindPat (ZeroTensorPat p q) = do
   p' <- bindPat p
   q' <- local (bindsExtMany (patVars p)) $ bindPat q
@@ -275,10 +296,10 @@ bind t@(C.TensorPair sl a sr b) = do
     Nothing -> guessSlice b
     (Just sr) -> pure (providedSlice sr)
   boundsl <- bindSlice sl'
-  boundsr <- bindSlice sr'
+  bounda <- local (bindsExtSlice sl') $ bind a
 
-  bounda <- bind a
-  boundb <- bind b
+  boundsr <- bindSlice sr'
+  boundb <- local (bindsExtSlice sr') $ bind b
 
   return $ S.TensorPair (fromJust $ boundsl) bounda (fromJust $ boundsr) boundb
 
@@ -300,10 +321,10 @@ bind (C.HomApp sl f sr a) = do
     Nothing -> guessSlice a
     (Just sr) -> pure (providedSlice sr)
   boundsl <- bindSlice sl'
-  boundsr <- bindSlice sr'
+  boundf <- local (bindsExtSlice sl') $ bind f
 
-  boundf <- bind f
-  bounda <- bind a
+  boundsr <- bindSlice sr'
+  bounda <- local (bindsExtSlice sr') $ bind a
 
   return $ S.HomApp
     (fromJust $ boundsl)
@@ -334,8 +355,8 @@ data Env = Env { envBindings :: [BindEntry], envCheckCtx :: S.SemCtx }
 
 processDecl :: Env -> C.Decl -> IO Env
 processDecl env@(Env bindings checkCtx) (C.Def name cbody cty) = do
-  let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings)) 0
-  let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings)) 0
+  let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings Nothing)) 0
+  let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings Nothing)) 0
 
   case S.runCheckM checkCtx $ S.checkTy S.IdSl ty of
     Left err -> putStrLn $ "Error in type of " ++ name ++ ": " ++ err
@@ -353,8 +374,8 @@ processDecl env@(Env bindings checkCtx) (C.Def name cbody cty) = do
   return (Env ((BindTopLevel name):bindings) (S.ctxExtGlobal semBody semTy checkCtx))
 
 processDecl env@(Env bindings checkCtx) (C.Dont name cbody cty) = do
-  let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings)) 0
-  let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings)) 0
+  let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings Nothing)) 0
+  let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings Nothing)) 0
 
   let semEnv = S.ctxToEnv checkCtx
   let semTy = N.eval semEnv ty

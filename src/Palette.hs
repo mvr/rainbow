@@ -38,6 +38,9 @@ instance Semigroup SlI where
   (CommaSl (Sub l) No) <> (CommaSl (Sub r) No) = CommaSl (Sub $ l <> r) No
   (CommaSl No (Sub l)) <> (CommaSl No (Sub r)) = CommaSl No (Sub $ l <> r)
   (TensorSl ll lr) <> (TensorSl rl rr) = TensorSl (ll <> rl) (lr <> rr)
+  IdSl <> SummonedUnitSl = IdSl
+  SummonedUnitSl <> IdSl = IdSl
+  l <> r = error $ "Unhandled " ++ show (l, r)
 
 instance Monoid SlI where
   mempty = OneSl
@@ -67,6 +70,7 @@ validSplitOf s (l, r) = cellTo s (l <> r)
 
 validUnitOf :: SlI -> UnitI -> Bool
 validUnitOf _ OneUnit = True
+validUnitOf SummonedUnitSl SummonedUnit = True
 validUnitOf IdSl HereUnit = True
 validUnitOf (CommaSl No r) (LeftCommaUnit u) = False
 validUnitOf (CommaSl (Sub l) r) (LeftCommaUnit u) = validUnitOf l u
@@ -81,6 +85,7 @@ tensorValidUnitOf (Sub s) (Sub u) = validUnitOf s u
 tensorValidUnitOf _ _ = False
 
 data UnitI where
+  SummonedUnit :: UnitI
   HereUnit :: UnitI
   OneUnit :: UnitI
   LeftCommaUnit :: UnitI -> UnitI

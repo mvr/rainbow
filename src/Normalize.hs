@@ -119,6 +119,8 @@ recoverPatType (PairVPat p (PatClosure q env)) = VSg (recoverPatType p) (Closure
 recoverPatType (ReflVPat p) = let pty = (recoverPatType p) in
   VSg pty (ClosureFunc (\x -> VSg pty (ClosureFunc (\y -> VId pty x y))))
 recoverPatType (TensorVPat p (PatClosure q env)) = VTensor (recoverPatType p) (Closure (patToType q) env)
+recoverPatType (LeftUnitorVPat (PatClosure p env)) = VTensor VUnit (Closure (patToType p) env)
+recoverPatType (RightUnitorVPat p) = VTensor (recoverPatType p) (ClosureFunc $ \_ -> VUnit)
 recoverPatType (UndInVPat p) = VUnd (recoverPatType p)
 
 -- WARNING: this has to give the variables in reverse order in the end: youngest first
@@ -143,6 +145,8 @@ evalPat env (ZeroVarPat ty) = ZeroVarVPat (eval env ty)
 evalPat env (PairPat p q) = PairVPat (evalPat env p) (PatClosure q env)
 evalPat env (ReflPat p) = ReflVPat (evalPat env p)
 evalPat env (TensorPat p q) = TensorVPat (evalPat env p) (PatClosure q env)
+evalPat env (LeftUnitorPat p) = LeftUnitorVPat (PatClosure p env)
+evalPat env (RightUnitorPat p) = RightUnitorVPat (evalPat env p)
 evalPat env (UndInPat p) = UndInVPat (evalPat env p)
 
 doClosure :: Closure -> Value -> Value

@@ -15,6 +15,8 @@ data Pat where
   PairPat :: Pat -> Pat -> Pat
   ReflPat :: Pat -> Pat
   TensorPat :: Pat -> Pat -> Pat
+  LeftUnitorPat :: Pat -> Pat
+  RightUnitorPat :: Pat -> Pat
   UndInPat :: Pat -> Pat
   deriving (Show, Eq)
 
@@ -49,7 +51,7 @@ shapeToPal = undefined
 -- Note: we read a path backwards: if `(a, b), (c, d)` then
 -- `b` has path RightCommaPath (LeftCommaPath StartPath)
 
-data PatPathPiece = LeftCommaPath | RightCommaPath | LeftTensorPath | RightTensorPath
+data PatPathPiece = LeftCommaPath | RightCommaPath | LeftTensorPath | RightTensorPath | LeftUnitorPath | RightUnitorPath
   deriving (Show, Eq)
 
 type PatPath = [PatPathPiece]
@@ -150,10 +152,9 @@ data VPat where
   PairVPat :: VPat -> PatClosure -> VPat
   ReflVPat :: VPat -> VPat
   TensorVPat :: VPat -> PatClosure -> VPat
+  LeftUnitorVPat :: PatClosure -> VPat
+  RightUnitorVPat :: VPat -> VPat
   UndInVPat :: VPat -> VPat
-  -- IdVPat :: VPat -> VPat -> VPat
-  -- UnitorLeftVPat
-  -- UnitorRightVPat
   deriving (Show)
 
 data Value where

@@ -1,0 +1,13 @@
+-- let unitid : Unit -> Unit = 
+--   fun u -> 
+--   match u at Unit with
+--     unitin[l] -> unitin[l]
+
+let unitor : (A : U<0>) -> (_A ⊗ Unit) -> _A = 
+  fun A p -> 
+  match p at _A with
+    << (x at _A), unitin[i] >>[top, new i] -> x
+
+-- let unitorinv : (A : U<0>) -> _A -> _A ⊗ Unit = 
+--   fun A a -> << a , unitin[i] >>[top, new i]
+    

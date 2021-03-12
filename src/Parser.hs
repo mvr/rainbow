@@ -25,7 +25,7 @@ symbol :: String -> Parser String
 symbol = L.symbol sc
 
 reserved :: [String]
-reserved = ["let", "fun", "fst", "snd", "undin", "undout", "U", "type", "at", "with", "match", "hom", "don't", "Id", "refl"]
+reserved = ["let", "fun", "fst", "snd", "undin", "undout", "U", "type", "at", "with", "match", "hom", "don't", "Id", "refl", "Unit", "unitin"]
 
 ident :: Parser Ident
 ident = (lexeme . try) (p >>= check)
@@ -34,9 +34,6 @@ ident = (lexeme . try) (p >>= check)
     check x = if x `elem` reserved
               then fail $ "keyword " ++ show x ++ " cannot be an identifier"
               else return x
-
--- ident :: Parser Ident
--- ident = lexeme ((:) <$> letterChar <*> many alphaNumChar <?> "identifier")
 
 prodSym :: Parser ()
 prodSym = pure () <* (try (symbol "*") <|> symbol "×")
@@ -54,18 +51,11 @@ slice :: Parser Slice
 slice = try ( symbol "_" *> pure SliceOmitted )
   <|> try ( symbol "1" *> pure SliceOne)
   <|> try ( symbol "top" *> pure SliceTop)
+  <|> try ( symbol "new" *> (SliceSummonedUnit <$> ident))
   <|> (Slice <$> many ident)
 
 unit :: Parser Unit
 unit = (UnitList <$> many ident)
-
--- colour :: Parser Colour
--- colour = try (symbol "⊤" *> pure ())
-
--- atomicTy :: Parser Ty
--- atomicTy = BaseTy <$> ident
---            <|> try (symbol "(" *> ty <* symbol ")")
---            <|> Und <$> (symbol "♮" *> ty)
 
 teleCell :: Parser TeleCell
 teleCell = do

@@ -369,6 +369,15 @@ checkAndEvalPat s path (TensorPat p q) = do
   (ptele, pterm) <- checkAndEvalPat s (LeftTensorPath : path) p
   (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightTensorPath : path) q
   return (qtele ++ ptele, VTensorPair psl pterm qsl qterm)
+checkAndEvalPat s path (LeftUnitorPat p) = do
+  (ptele, pterm) <- local (ctxExtValZero (VUnitIn (UnitL 0 OneUnit)) VUnit) $ checkAndEvalPat s (LeftUnitorPath : path) p
+  pal <- asks ctxPal
+  return (ptele, VTensorPair (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)) (semPalIdSlice pal) pterm)
+checkAndEvalPat s path (RightUnitorPat p) = do
+  (ptele, pterm) <- checkAndEvalPat s (RightUnitorPath : path) p
+  pal <- asks ctxPal
+  return (ptele, VTensorPair (semPalIdSlice pal) pterm (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)))
+
 
 -- The slice to check a type sitting at `path` in a pattern, when the
 -- ambient slice is `s`.
@@ -388,6 +397,8 @@ sliceAtType' (LeftCommaPath : p) = let (s, b) = sliceAtType' p in (CommaSl (Sub 
 sliceAtType' (RightCommaPath : p) = case sliceAtType' p of
   (s, True) -> (CommaSl No (Sub s), True)
   (s, False) -> (CommaSl (Sub IdSl) (Sub s), False)
+sliceAtType' (LeftUnitorPath : p) = (fst $ sliceAtType' p, True)
+sliceAtType' (RightUnitorPath : p) = (fst $ sliceAtType' p, True)
 
 checkTy :: SlI -> Ty -> CheckM ()
 -- checkTy t | traceShow ("Check ty: " ++ show t) False = undefined

@@ -10,6 +10,7 @@ type Ident = String
 -- FIXME: Let's try this first, a slice is specified by a list of colour labels that are tensored together.
 data Slice where
   Slice :: [Ident] -> Slice
+  SliceSummonedUnit :: Ident -> Slice
   SliceOmitted :: Slice
   SliceOne :: Slice
   SliceTop :: Slice
@@ -78,6 +79,8 @@ data Pat where
   PairPat :: Pat -> Pat -> Pat
   ReflPat :: Pat -> Pat
   TensorPat :: Maybe Ident -> Pat -> Maybe Ident -> Pat -> Pat
+  LeftUnitorPat :: Pat -> Pat
+  RightUnitorPat :: Pat -> Pat
 
   -- FIXME: do the others.
   ZeroVarPat :: Ident -> Ty -> Pat
@@ -94,6 +97,8 @@ comprehendPat t = go False t -- Have we been zeroed by an UndIn yet?
     go False (Pair x (Pair x' (Refl x'')))
       | x == x' && x' == x'' = ReflPat <$> go False x
     go f (Pair x y) = PairPat <$> go f x <*> go f y
+    go False (TensorPair (Just (SliceSummonedUnit l)) (UnitIn _) (Just SliceTop) x) = LeftUnitorPat <$> comprehendPat x
+    go False (TensorPair (Just SliceTop) x (Just (SliceSummonedUnit l)) (UnitIn _)) = RightUnitorPat <$> comprehendPat x
     go False (TensorPair lc x rc y) = TensorPat <$> pure (comprehendCol lc) <*> go False x <*> pure (comprehendCol rc) <*> go False y
       where comprehendCol (Just (Slice [c])) = Just c
             comprehendCol Nothing = Nothing
