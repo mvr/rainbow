@@ -125,6 +125,7 @@ recoverPatType (UndInVPat p) = VUnd (recoverPatType p)
 
 -- WARNING: this has to give the variables in reverse order in the end: youngest first
 matchPat :: PatShape -> Value -> Maybe SemTele
+matchPat VarShape a = pure (SemTele OneSemPal [a])
 matchPat OneShape VOneIn = pure (SemTele OneSemPal [])
 matchPat UnitShape (VUnitIn l) = pure (SemTele (UnitSemPal l) [])
 matchPat (PairShape p q) (VPair a b) = do
@@ -135,7 +136,11 @@ matchPat (TensorShape p q) (VTensorPair sl a sr b) = do
   aenv@(SemTele apal avars) <- matchPat p a
   (SemTele bpal bvars) <- matchPat q b -- OK what happens here? What environment is q evaluated in?
   return (SemTele (TensorSemPal sl apal sr bpal) (bvars ++ avars))
-matchPat _ _ = undefined
+matchPat (RightUnitorShape p) (VTensorPair _ a (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit))) = matchPat p a
+matchPat (RightUnitorShape p) _ = Nothing
+matchPat (LeftUnitorShape p) (VTensorPair (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)) _ a) = matchPat p a
+matchPat (LeftUnitorShape p) _ = Nothing
+matchPat p v = error $ "Unhandled " ++ show (p, v)
 
 evalPat :: SemEnv -> Pat -> VPat
 evalPat env OnePat = OneVPat
@@ -207,10 +212,10 @@ eval env (HomApp fsl f asl a) = doHomApp (envLookupSlice env fsl) (eval env f) (
 --------------------------------------------------------------------------------
 -- Equality
 
-data Size = Size {- pal left depth -} Int {- ctx length -} Int
+data Size = Size {- pal -} Palette {- ctx length -} Int
 
-extSize :: Size -> SemTele -> Size
-extSize (Size depth size) (SemTele pal env) = (Size (depth + 1) (size + length env))
+extSizeComma :: Size -> SemTele -> Size
+extSizeComma (Size palshape size) (SemTele pal env) = (Size (TensorPal palshape (semPalToShape pal)) (size + length env))
 -- FIXME: Clever comma:
 -- extSize (Size depth size) (SemEnv pal env) = (Size (depth + palbit pal) (size + length env))
 --   where palbit OneSemPal = 0 -- For the smart comma constructor
@@ -234,7 +239,7 @@ makeUnitVal :: Size -> PatPath -> UnitL
 makeUnitVal (Size depth _) _ = undefined
 
 makeSliceVal :: Size -> PatPath -> SlL
-makeSliceVal (Size depth _ ) path = SlL depth (pathToSlice path)
+makeSliceVal (Size pal _ ) path = SlL (palDepth pal) (pathToSlice path)
 
 makeVarVal :: VTy -> {- level -} Int -> Value
 makeVarVal ty lev = VNeutral ty (NVar lev)
@@ -272,6 +277,14 @@ makeVPatTele size path (TensorVPat p q) =
       qsl = makeSliceVal size (RightTensorPath : path)
       (qtele, qterm) = makeVPatTele (size `extSizeEnv` ptele) (RightTensorPath : path) (doPatClosure q ptele)
   in (qtele ++ ptele , VTensorPair psl pterm qsl qterm)
+makeVPatTele size path (LeftUnitorVPat p) =
+  let (ptele, pterm) = makeVPatTele size (LeftUnitorPath : path) (doPatClosure p [VUnitIn $ UnitL 0 OneUnit])
+      topSlice = makeSliceVal size path
+  in (ptele, VTensorPair (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)) topSlice pterm)
+makeVPatTele size path (RightUnitorVPat p) =
+  let (ptele, pterm) = makeVPatTele size (RightUnitorPath : path) p
+      topSlice = makeSliceVal size path
+  in (ptele, VTensorPair topSlice pterm (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)))
 
 makeVPatCartTele :: Size -> VPat -> ([Value], Value)
 makeVPatCartTele size pat = makeVPatTele size [RightCommaPath] pat
@@ -327,9 +340,13 @@ eqNF size (VTensor aty1 bclo1, VTensorPair sl1 a1 sr1 b1) (VTensor aty2 bclo2, V
       bty2 = doClosure bclo2 a2
   in eqNF size (aty1, a1) (aty2, a2) &&
      eqNF size (bty1, b1) (bty2, b2) &&
-     sl1 == sl2 &&
-     sr1 == sr2
+     splitEquivalent pal (sl1, sr1) (sl2, sr2)
+       where (Size pal _) = size
 eqNF size (VTensor aty1 bclo1, VNeutral _ ne1) (VTensor aty2 bclo2, VNeutral _ ne2) =
+  eqNE size ne1 ne2
+eqNF size (VUnit, VUnitIn u1) (VUnit, VUnitIn u2) =
+  u1 == u2
+eqNF size (VUnit, VNeutral _ ne1) (VUnit, VNeutral _ ne2) =
   eqNE size ne1 ne2
 eqNF size (VHom aty1 bclo1, f1) (VHom aty2 bclo2, f2) =
   let var = makeVarValS aty1 size in
@@ -350,15 +367,14 @@ eqNE size (NMatch (Normal aty1 a1) mot1 sh1 pat1 br1) (NMatch (Normal aty2 a2) m
   in  eqTy size aty1 aty2
       && eqNF size (aty1, a1) (aty2, a2)
       && eqTy (extSizeLam size) (doClosure mot1 motvar) (doClosure mot2 motvar)
-      && eqNF (size `extSize` pattele) (doClosure mot1 patterm, doClosurePat br1 pattele) (doClosure mot2 patterm, doClosurePat br2 pattele)
+      && eqNF (size `extSizeComma` pattele) (doClosure mot1 patterm, doClosurePat br1 pattele) (doClosure mot2 patterm, doClosurePat br2 pattele)
 eqNE size (NFst p1) (NFst p2) = eqNE size p1 p2
 eqNE size (NSnd p1) (NSnd p2) = eqNE size p1 p2
 eqNE size (NUndOut p1) (NUndOut p2) = eqNE size p1 p2
-
 eqNE size (NHomApp fsl1 f1 asl1 (Normal aty1 a1)) (NHomApp fsl2 f2 asl2 (Normal aty2 a2)) =
   eqNE size f1 f2 && eqNF size (aty1, a1) (aty2, a2) &&
-  fsl1 == fsl2 &&
-  asl1 == asl2
+  splitEquivalent pal (fsl1, asl1) (fsl2, asl2)
+    where (Size pal _) = size
 eqNE _ _ _  = False
 
 -- normalize :: SemEnv -> Term -> Ty -> Term

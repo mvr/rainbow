@@ -8,6 +8,12 @@ data Palette where
   UnitPal :: Palette
   deriving (Show, Eq)
 
+palDepth :: Palette -> Int
+palDepth OriginPal = 0
+palDepth OnePal = 0
+palDepth (CommaPal l _) = 1 + palDepth l
+palDepth (TensorPal l _) = 1 + palDepth l
+
 data Choice a = No | Sub a
   deriving (Show, Eq, Functor)
 
@@ -51,7 +57,8 @@ instance Monoid SlI where
 cellTo :: SlI -> SlI -> Bool
 cellTo _ OneSl = True
 cellTo IdSl IdSl = True
-cellTo _ IdSl = False
+cellTo (CommaSl l r) IdSl = cellTo (CommaSl l r) (CommaSl (Sub IdSl) (Sub IdSl))
+cellTo (TensorSl l r) IdSl = cellTo (TensorSl l r) (TensorSl (Sub IdSl) (Sub IdSl))
 cellTo IdSl (TensorSl l r) = cellTo (TensorSl (Sub IdSl) (Sub IdSl)) (TensorSl l r)
 cellTo (TensorSl l1 r1) (TensorSl l2 r2) = tchoice l1 l2 && tchoice r1 r2
   where tchoice No No = True
@@ -111,6 +118,11 @@ data SlL = SlL Int SlI | SlEmpty
 data UnitL = UnitL Int UnitI
   deriving (Show, Eq)
 
+-- FIXME: this is an incomplete hack until I figure out how to deal with this comma weakening
+splitEquivalent :: Palette -> (SlL, SlL) -> (SlL, SlL) -> Bool
+splitEquivalent pal (l1, SlL 0 SummonedUnitSl) (l2, SlL 0 SummonedUnitSl) = True
+splitEquivalent pal (l1, r1) (l2, r2) = l1 == l2 && r1 == r2
+
 data SemPal where
   OriginSemPal :: SemPal
   OneSemPal :: SemPal
@@ -119,8 +131,15 @@ data SemPal where
   TensorSemPal :: SlL -> SemPal -> SlL ->  SemPal -> SemPal
   deriving (Eq, Show)
 
-palToSemPal :: Palette -> SemPal
-palToSemPal = undefined
+-- palToSemPal :: Palette -> SemPal
+-- palToSemPal = undefined
+
+semPalToShape :: SemPal -> Palette
+semPalToShape OriginSemPal = OnePal
+semPalToShape OneSemPal = OnePal
+semPalToShape (CommaSemPal p q) = CommaPal (semPalToShape p) (semPalToShape q)
+semPalToShape (TensorSemPal _ p _ q) = TensorPal (semPalToShape p) (semPalToShape q)
+semPalToShape (UnitSemPal u) = UnitPal
 
 instance Semigroup SlL where
 instance Monoid SlL where
@@ -142,6 +161,7 @@ lookupSlice pal OneSl = SlL 0 OneSl
 lookupSlice (CommaSemPal l _) (CommaSl (Sub s) No) = lookupSlice l s
 lookupSlice (CommaSemPal _ r) (CommaSl No (Sub s)) = lookupSlice r s -- FIXME: Is this enough?
 lookupSlice (TensorSemPal sl l sr r) (TensorSl l' r') = (lookupSliceChoice sl l l') <> (lookupSliceChoice sr r r')
+lookupSlice _ SummonedUnitSl = SlL 0 SummonedUnitSl
 
 lookupSliceChoice :: SlL -> SemPal -> Choice SlI -> SlL
 lookupSliceChoice s pal No = SlEmpty
@@ -156,6 +176,7 @@ lookupUnit (CommaSemPal _ r) (RightCommaUnit u) = lookupUnit r u
 lookupUnit (TensorSemPal _ l _ r) (TensorUnit (Sub l') (Sub r')) = lookupUnit l l' <> lookupUnit r r'
 lookupUnit (TensorSemPal _ l _ r) (TensorUnit (Sub l') No) = lookupUnit l l'
 lookupUnit (TensorSemPal _ l _ r) (TensorUnit No (Sub r')) = lookupUnit r r'
+lookupUnit _ SummonedUnit = UnitL 0 SummonedUnit
 
 -- sliceIxToLvl :: Palette -> SlI -> SlL
 -- sliceIxToLvl = undefined

@@ -26,6 +26,8 @@ data PatShape where
   VarShape :: PatShape
   PairShape :: PatShape -> PatShape -> PatShape
   TensorShape :: PatShape -> PatShape -> PatShape
+  LeftUnitorShape :: PatShape -> PatShape
+  RightUnitorShape :: PatShape -> PatShape
   deriving (Show, Eq)
 
 patToType :: Pat -> Ty
@@ -43,6 +45,8 @@ patToShape UnitPat = UnitShape
 patToShape (VarPat _) = VarShape
 patToShape (PairPat p q) = PairShape (patToShape p) (patToShape q)
 patToShape (TensorPat p q) = TensorShape (patToShape p) (patToShape q)
+patToShape (LeftUnitorPat p) = LeftUnitorShape (patToShape p)
+patToShape (RightUnitorPat p) = RightUnitorShape (patToShape p)
 
 shapeToPal :: PatShape -> Palette
 shapeToPal = undefined

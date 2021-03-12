@@ -1,13 +1,15 @@
--- let unitid : Unit -> Unit = 
---   fun u -> 
---   match u at Unit with
---     unitin[l] -> unitin[l]
-
 let unitor : (A : U<0>) -> (_A ⊗ Unit) -> _A = 
   fun A p -> 
   match p at _A with
     << (x at _A), unitin[i] >>[top, new i] -> x
 
--- let unitorinv : (A : U<0>) -> _A -> _A ⊗ Unit = 
---   fun A a -> << a , unitin[i] >>[top, new i]
+let unitorinv : (A : U<0>) -> _A -> _A ⊗ Unit = 
+  fun A a -> << a , unitin[i] >>[top, new i]
     
+let tofro : (A : U<0>) (x : _A) -> Id _A (unitor A (unitorinv A x)) x = 
+  fun A x -> refl x
+
+let froto : (A : U<0>) (p : _A ⊗ Unit) -> Id (_A ⊗ Unit) (unitorinv A (unitor A p)) p = 
+  fun A p -> 
+  match p at t -> (Id (_A ⊗ Unit) (unitorinv A (unitor A t)) t) with
+    << (x at _A), unitin[j] >>[top, new j] -> refl << x, unitin[k] >>[top, new k]
