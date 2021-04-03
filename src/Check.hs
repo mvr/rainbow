@@ -35,7 +35,7 @@ entryToValue :: CtxEntry -> Value
 entryToValue (CtxEntry t _ _) = t
 
 ctxToEnv :: SemCtx -> SemEnv
-ctxToEnv (SemCtx pal vars) = SemEnv pal (fmap entryToValue vars)
+ctxToEnv (SemCtx pal vars) = SemEnv (semPalTopSlice pal) pal (fmap entryToValue vars)
 
 -- "Telescopes", two different versions for the two different ways the
 -- palettes can be combined. Hopefully this duplication is worth it in
@@ -186,12 +186,10 @@ check s (Refl t) (VId aty a b) = do
   assertEq aty b tval
 check s (Refl t) ty = throwError "Unexpected refl"
 
-check s (Und ty) (VUniv l) = do
-  check OneSl ty (VUniv l)
+check s (Und ty) (VUniv l) = check OneSl ty (VUniv l)
 check s (Und ty) t = throwError "Expected universe"
 
-check s (UndIn a) (VUnd aty) = do
-  check OneSl a aty
+check s (UndIn a) (VUnd aty) = check OneSl a aty
 check s (UndIn a) aty = throwError "Unexpected natural intro"
 
 check s (Tensor aty bty) (VUniv l) = do
@@ -372,11 +370,11 @@ checkAndEvalPat s path (TensorPat p q) = do
 checkAndEvalPat s path (LeftUnitorPat p) = do
   (ptele, pterm) <- local (ctxExtValZero (VUnitIn (UnitL 0 OneUnit)) VUnit) $ checkAndEvalPat s (LeftUnitorPath : path) p
   pal <- asks ctxPal
-  return (ptele, VTensorPair (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)) (semPalIdSlice pal) pterm)
+  return (ptele, VTensorPair (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)) (semPalTopSlice pal) pterm)
 checkAndEvalPat s path (RightUnitorPat p) = do
   (ptele, pterm) <- checkAndEvalPat s (RightUnitorPath : path) p
   pal <- asks ctxPal
-  return (ptele, VTensorPair (semPalIdSlice pal) pterm (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)))
+  return (ptele, VTensorPair (semPalTopSlice pal) pterm (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)))
 
 
 -- The slice to check a type sitting at `path` in a pattern, when the

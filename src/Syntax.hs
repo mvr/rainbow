@@ -104,23 +104,25 @@ data Term where
   HomApp :: SlI -> Term -> SlI -> Term -> Term
   deriving (Show, Eq)
 
-data SemEnv = SemEnv SemPal [Value]
+-- The slice is the current top slice,
+-- only needed to we can do the unitors!
+data SemEnv = SemEnv SlL SemPal [Value]
   deriving ()
 
 semEnvLength :: SemEnv -> Int
-semEnvLength (SemEnv _ env) = length env
+semEnvLength (SemEnv _ _ env) = length env
 
 data SemTele = SemTele SemPal [Value]
   deriving ()
 
 semEnvExt :: SemEnv -> [Value] -> SemEnv
-semEnvExt (SemEnv pal env) env' = (SemEnv pal (env' ++ env))
+semEnvExt (SemEnv s pal env) env' = (SemEnv s pal (env' ++ env))
 
 semEnvComma :: SemEnv -> SemTele -> SemEnv
-semEnvComma (SemEnv pal env) (SemTele pal' env') = (SemEnv (CommaSemPal pal pal') (env' ++ env))
+semEnvComma (SemEnv s pal env) (SemTele pal' env') = (SemEnv s (CommaSemPal pal pal') (env' ++ env))
 
-semEnvTensor :: SlL -> SemEnv -> SlL -> SemTele -> SemEnv
-semEnvTensor sl (SemEnv pal env) sr (SemTele pal' env') = (SemEnv (TensorSemPal sl pal sr pal') (env' ++ env))
+-- semEnvTensor :: SlL -> SemEnv -> SlL -> SemTele -> SemEnv
+-- semEnvTensor sl (SemEnv pal env) sr (SemTele pal' env') = (SemEnv (TensorSemPal sl pal sr pal') (env' ++ env))
 
 data Closure where
   Closure :: Term -> SemEnv -> Closure

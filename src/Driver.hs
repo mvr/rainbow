@@ -291,9 +291,11 @@ bind (C.Hom bodyc yc y a b) = do
 bind t@(C.TensorPair sl a sr b) = do
   sl' <- case sl of
     Nothing -> guessSlice a
+    (Just C.SliceOmitted) -> guessSlice a
     (Just sl) -> pure (providedSlice sl)
   sr' <- case sr of
     Nothing -> guessSlice b
+    (Just C.SliceOmitted) -> guessSlice b
     (Just sr) -> pure (providedSlice sr)
   boundsl <- bindSlice sl'
   bounda <- local (bindsExtSlice sl') $ bind a

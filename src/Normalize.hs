@@ -38,7 +38,7 @@ instance Zero Value where
   zero (VHomLam a) = VHomLam (zero a)
 
 instance Zero SemEnv where
-  zero (SemEnv pal env) = SemEnv OriginSemPal (fmap zero env)
+  zero (SemEnv _ pal env) = SemEnv (SlL 0 OneSl) pal (fmap zero env)
 
 instance Zero Closure where zero (Closure t env) = Closure t (zero env)
 -- zeroClosure2 (Closure2 t env) = Closure2 t (fmap zero env)
@@ -61,13 +61,13 @@ instance Zero Normal where
 -- Evaluation
 
 envLookup :: SemEnv -> Int -> Value
-envLookup (SemEnv _ env) i = env !! i
+envLookup (SemEnv _ _ env) i = env !! i
 
 envLookupSlice :: SemEnv -> SlI -> SlL
-envLookupSlice (SemEnv pal _) s = lookupSlice pal s
+envLookupSlice (SemEnv d pal _) s = lookupSlice d pal s
 
 envLookupUnit :: SemEnv -> UnitI -> UnitL
-envLookupUnit (SemEnv pal _) u = lookupUnit pal u
+envLookupUnit (SemEnv _ pal _) u = lookupUnit pal u
 
 doApp :: Value -> Value -> Value
 doApp (VLam clos) a = doClosure clos a
@@ -98,11 +98,11 @@ doUndOut (VNeutral ty ne) = error $ "Unexpected neutral " ++ show ty ++ "in doUn
 doUndOut t = error $ "Unexpected term " ++ show t ++ "in doUndOut"
 
 doHomApp :: SlL -> Value -> SlL -> Value -> Value
-doHomApp fsl (VLam clos) asl a = doHomClosure fsl clos asl a
-doHomApp fsl (VNeutral (VPi aty bclo) ne) asl a =
-  let bty = doHomClosure fsl bclo asl a in
-    VNeutral bty (NHomApp fsl ne asl (Normal aty a))
-doHomApp _ (VNeutral ty ne) _ a = error $ "Unexpected neutral " ++ show ty ++ "in doHomApp"
+-- doHomApp fsl (VHomLam clos) asl a = doHomClosure fsl clos asl a
+-- doHomApp fsl (VNeutral (VPi aty bclo) ne) asl a =
+--   let bty = doHomClosure fsl bclo asl a in
+--     VNeutral bty (NHomApp fsl ne asl (Normal aty a))
+-- doHomApp _ (VNeutral ty ne) _ a = error $ "Unexpected neutral " ++ show ty ++ "in doHomApp"
 doHomApp _ t _ a = error $ "Unexpected term " ++ show t ++ "in doHomApp"
 
 doMatch :: Value -> Closure -> PatShape -> VPat -> ClosurePat -> Value
@@ -134,7 +134,7 @@ matchPat (PairShape p q) (VPair a b) = do
   return (SemTele (CommaSemPal apal bpal) (bvars ++ avars))
 matchPat (TensorShape p q) (VTensorPair sl a sr b) = do
   aenv@(SemTele apal avars) <- matchPat p a
-  (SemTele bpal bvars) <- matchPat q b -- OK what happens here? What environment is q evaluated in?
+  (SemTele bpal bvars) <- matchPat q b
   return (SemTele (TensorSemPal sl apal sr bpal) (bvars ++ avars))
 matchPat (RightUnitorShape p) (VTensorPair _ a (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit))) = matchPat p a
 matchPat (RightUnitorShape p) _ = Nothing
@@ -155,12 +155,12 @@ evalPat env (RightUnitorPat p) = RightUnitorVPat (evalPat env p)
 evalPat env (UndInPat p) = UndInVPat (evalPat env p)
 
 doClosure :: Closure -> Value -> Value
-doClosure (Closure t (SemEnv pal env)) a = eval (SemEnv pal (a : env)) t
+doClosure (Closure t (SemEnv s pal env)) a = eval (SemEnv s pal (a : env)) t
 doClosure (ClosureFunc f) a = f a
 
-doHomClosure :: SlL -> Closure -> SlL -> Value -> Value
-doHomClosure csl (Closure t (SemEnv pal env)) asl a = eval (SemEnv (TensorSemPal csl pal asl OneSemPal) (a : env)) t
-doHomClosure _ (ClosureFunc f) _ a = f a
+-- doHomClosure :: SlL -> Closure -> SlL -> Value -> Value
+-- doHomClosure csl (Closure t (SemEnv pal env)) asl a = eval (SemEnv (TensorSemPal csl pal asl OneSemPal) (a : env)) t
+-- doHomClosure _ (ClosureFunc f) _ a = f a
 
 doClosurePat :: ClosurePat -> SemTele -> Value
 doClosurePat (ClosurePat t env) env' = eval (semEnvComma env env') t
@@ -348,9 +348,9 @@ eqNF size (VUnit, VUnitIn u1) (VUnit, VUnitIn u2) =
   u1 == u2
 eqNF size (VUnit, VNeutral _ ne1) (VUnit, VNeutral _ ne2) =
   eqNE size ne1 ne2
-eqNF size (VHom aty1 bclo1, f1) (VHom aty2 bclo2, f2) =
-  let var = makeVarValS aty1 size in
-  eqNF (extSizeLam size) (doClosure bclo1 var, doApp f1 var) (doClosure bclo2 var, doApp f2 var)
+-- eqNF size (VHom aty1 bclo1, f1) (VHom aty2 bclo2, f2) =
+--   let var = makeVarValS aty1 size in
+--   eqNF (extSizeLam size) (doClosure bclo1 var, doHomApp f1 var) (doClosure bclo2 var, doHomApp f2 var)  -- FIXME: This is busted
 eqNF _ _ _  = False
 
 eqNE :: Size -> Neutral -> Neutral -> Bool

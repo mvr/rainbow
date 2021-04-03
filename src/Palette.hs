@@ -152,21 +152,18 @@ semPalDepth OriginSemPal = 0
 semPalDepth (CommaSemPal l _) = 1 + semPalDepth l
 semPalDepth (TensorSemPal _ l _ _) = 1 + semPalDepth l
 
-semPalIdSlice :: SemPal -> SlL
-semPalIdSlice pal = SlL (semPalDepth pal) IdSl
+semPalTopSlice :: SemPal -> SlL
+semPalTopSlice pal = SlL (semPalDepth pal) IdSl
 
-lookupSlice :: SemPal -> SlI -> SlL
-lookupSlice pal IdSl = semPalIdSlice pal
-lookupSlice pal OneSl = SlL 0 OneSl
-lookupSlice (CommaSemPal l _) (CommaSl (Sub s) No) = lookupSlice l s
-lookupSlice (CommaSemPal _ r) (CommaSl No (Sub s)) = lookupSlice r s -- FIXME: Is this enough?
-lookupSlice (TensorSemPal sl l sr r) (TensorSl l' r') = (lookupSliceChoice sl l l') <> (lookupSliceChoice sr r r')
-lookupSlice _ SummonedUnitSl = SlL 0 SummonedUnitSl
-
-lookupSliceChoice :: SlL -> SemPal -> Choice SlI -> SlL
-lookupSliceChoice s pal No = SlEmpty
-lookupSliceChoice s pal (Sub IdSl) = s
-lookupSliceChoice _ pal (Sub s') = lookupSlice pal s'
+lookupSlice :: {- current slice -} SlL -> SemPal -> SlI -> SlL
+lookupSlice d pal IdSl = d
+lookupSlice d pal OneSl = SlL 0 OneSl
+lookupSlice d (CommaSemPal l _) (CommaSl (Sub s) No) = lookupSlice d l s
+lookupSlice d (CommaSemPal _ r) (CommaSl No (Sub s)) = lookupSlice d r s -- FIXME: Is this enough?
+lookupSlice d (TensorSemPal sl l sr r) (TensorSl (Sub l') (Sub r')) = (lookupSlice sl l l') <> (lookupSlice sr r r')
+lookupSlice d (TensorSemPal sl l sr r) (TensorSl No (Sub r')) = lookupSlice sr r r'
+lookupSlice d (TensorSemPal sl l sr r) (TensorSl (Sub l') No) = (lookupSlice sl l l')
+lookupSlice d _ SummonedUnitSl = SlL 0 SummonedUnitSl
 
 lookupUnit :: SemPal -> UnitI -> UnitL
 lookupUnit pal OneUnit = UnitL 0 OneUnit
