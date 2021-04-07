@@ -7,7 +7,7 @@ import Control.Monad.Except
 import Data.Functor.Identity
 
 import qualified Normalize as N
-import Normalize (Size, makeVarVal)
+import Normalize (Size, makeVarVal, PatPathPiece(..), PatPath)
 import Palette
 import Syntax
 
@@ -35,7 +35,7 @@ entryToValue :: CtxEntry -> Value
 entryToValue (CtxEntry t _ _) = t
 
 ctxToEnv :: SemCtx -> SemEnv
-ctxToEnv (SemCtx pal vars) = SemEnv (semPalTopSlice pal) pal (fmap entryToValue vars)
+ctxToEnv (SemCtx pal vars) = SemEnv (palTopSliceLevel $ semPalToShape pal) pal (fmap entryToValue vars)
 
 -- "Telescopes", two different versions for the two different ways the
 -- palettes can be combined. Hopefully this duplication is worth it in
@@ -101,11 +101,14 @@ ctxExtHom a aty (SemCtx pal vars) = SemCtx (TensorSemPal sl pal sr OneSemPal) ((
 ctxLen :: SemCtx -> Int
 ctxLen = length . ctxVars
 
-ctxSize :: SemCtx -> Size
-ctxSize ctx = N.Size (semPalDepth $ ctxPal ctx) (ctxLen ctx)
+ctxSize :: SlI -> SemCtx -> Size
+ctxSize s ctx = let pal = semPalToShape $ ctxPal ctx in N.Size pal (sliceIndexToLevel pal s) (ctxLen ctx)
 
-envExt :: SemEnv -> Value -> SemEnv
-envExt (SemEnv pal env) v = SemEnv pal (v : env)
+envExtComma :: SemEnv -> Value -> SemEnv
+envExtComma (SemEnv s pal env) v = SemEnv (slExtMatch (semPalToShape pal) s) (CommaSemPal pal OneSemPal) (v : env)
+
+envExtSilent :: SemEnv -> Value -> SemEnv
+envExtSilent (SemEnv s pal env) v = SemEnv s pal (v : env)
 
 -- teleToEnv :: SemTele -> SemEnv
 -- teleToEnv (SemTele _ vars) = fmap (\(t, _, _) -> t) vars
@@ -124,8 +127,9 @@ eval aty = do
 evalClosure :: Closure -> Term -> CheckM Value
 evalClosure clo a = do
   semEnv <- asks ctxToEnv
+
   let aval = N.eval semEnv a
-  return $ N.doClosure clo aval
+  return $ N.doClosure (semEnvTopSlice semEnv) clo aval
 
 evalAndVar :: Ty -> CheckM (VTy, Value)
 evalAndVar aty = do
@@ -135,14 +139,14 @@ evalAndVar aty = do
   let var = makeVarVal atyval lev
   return (atyval, var)
 
-assertEq :: VTy -> Value -> Value -> CheckM ()
-assertEq ty a b = do
-  size <- asks ctxSize
+assertEq :: SlI -> VTy -> Value -> Value -> CheckM ()
+assertEq s ty a b = do
+  size <- asks (ctxSize s)
   unless (N.eqNF size (ty, a) (ty, b)) $
     throwError $ "Expected " ++ show a ++ " to equal " ++ show b
 
 check :: SlI -> Term -> VTy -> CheckM ()
--- check s t ty | traceShow ("Check: " ++ show (s, t, ty)) False = undefined
+check s t ty | traceShow ("Check: " ++ show (s, t, ty)) False = undefined
 
 check s (Univ i) (VUniv j) | i < j = return ()
 check s (Univ i) t = throwError $ "Expecting universe over " ++ show i
@@ -155,8 +159,9 @@ check s (Pi aty bclo) t = throwError "Expected universe"
 
 check s (Lam b) (VPi aty bclo) = do
   lev <- asks ctxLen
+  env <- asks ctxToEnv
   let var = makeVarVal aty lev
-  let bty = N.doClosure bclo var
+  let bty = N.doClosure (semEnvTopSlice env) bclo var
   local (ctxExtVar var aty s) $ check s b bty
 check s (Lam b) ty = throwError "Unexpected lambda"
 
@@ -182,8 +187,8 @@ check s (Id aty a b) t = throwError "Expected universe"
 check s (Refl t) (VId aty a b) = do
   check s t aty
   tval <- eval t
-  assertEq aty a tval
-  assertEq aty b tval
+  assertEq s aty a tval
+  assertEq s aty b tval
 check s (Refl t) ty = throwError "Unexpected refl"
 
 check s (Und ty) (VUniv l) = check OneSl ty (VUniv l)
@@ -223,8 +228,9 @@ check s (Hom aty bclo) t = throwError "Expected universe"
 
 check s (HomLam b) (VHom aty bclo) = do
   lev <- asks ctxLen
+  env <- asks ctxToEnv
   let var = makeVarVal aty lev
-  let bty = N.doClosure bclo var
+  let bty = N.doClosure (semEnvTopSlice env) bclo var
   local (ctxExtHom var aty) $ check (TensorSl (Sub s) (Sub IdSl)) b bty
 check s (HomLam b) ty = throwError "Unexpected hom lambda"
 
@@ -232,11 +238,11 @@ check s a ty = do
   -- e <- asks ctxToEnv
   -- traceShow e $ return ()
   ty' <- synth s a
-  size <- asks ctxSize
+  size <- asks (ctxSize s)
   when (not $ N.eqTy size ty ty') $ throwError $ "type mismatch, expected: " ++ show ty ++ " got " ++ show ty'
 
 synth :: SlI -> Term -> CheckM VTy
--- synth s t | traceShow ("Synth: " ++ show (s, t)) False = undefined
+synth s t | traceShow ("Synth: " ++ show (s, t)) False = undefined
 synth s (Var i) = do
   -- s <- ask
   -- traceShow s (return ())
@@ -295,25 +301,27 @@ synth s (UndOut n) = do
     _ -> throwError "expected Und type"
 
 synth s (Match tar mot pat branch) = do
-  size <- asks ctxSize
+  size <- asks (ctxSize s)
 
   let pal = N.makePatPal size [RightCommaPath] (patToShape pat)
+
   (pattele, patterm) <- local (flip semCtxComma (SemCtxTele pal [])) $ checkAndEvalPat s [] pat
 
   semEnv <- asks ctxToEnv
 
-  let vpat = N.evalPat semEnv pat
-      tarty = N.recoverPatType vpat
+  let vpat   = N.evalPat semEnv pat
+      tarty  = N.recoverPatType vpat
       motvar = N.makeVarValS tarty size
 
-  local (ctxExtVar motvar tarty s) $ checkTy s mot
+  local (flip semCtxComma (SemCtxTele OneSemPal [CtxEntry motvar tarty (Col (CommaSl (Sub s) (Sub IdSl)))])) $ checkTy s mot
 
   check s tar tarty
 
-  let (_, patterm) = N.makeVPatCartTele size vpat
-  local (flip semCtxComma (SemCtxTele pal pattele)) $ check (CommaSl (Sub s) (Sub IdSl)) branch (N.eval (envExt semEnv patterm) mot)
+  let (_, patterm) = N.makeVPatCartTele (N.extSizeComma size (SemTele pal [])) vpat
 
-  return $ N.eval (envExt semEnv (N.eval semEnv tar)) mot
+  local (flip semCtxComma (SemCtxTele pal pattele)) $ check (CommaSl (Sub s) (Sub IdSl)) branch (N.eval (envExtComma semEnv patterm) mot)
+
+  return $ N.eval (envExtSilent semEnv (N.eval semEnv tar)) mot
 
 synth s a = throwError $ "cannot synth the type of " ++ show a
 
@@ -327,7 +335,7 @@ checkAndEvalPat :: SlI -> PatPath -> Pat -> CheckM ([CtxEntry], Value)
 checkAndEvalPat s path (VarPat ty) = do
   let c = sliceAtType s path
   checkTy c ty
-  size <- asks ctxSize
+  size <- asks (ctxSize s)
   env <- asks ctxToEnv
 
   let vty = N.eval env ty
@@ -337,7 +345,7 @@ checkAndEvalPat s path (VarPat ty) = do
 
 checkAndEvalPat s path (ZeroVarPat ty) = do
   checkTy OneSl ty
-  size <- asks ctxSize
+  size <- asks (ctxSize s)
   env <- asks ctxToEnv
 
   let vty = N.eval env ty
@@ -350,7 +358,7 @@ checkAndEvalPat s path (UndInPat p) = do
   (ptele, pterm) <- checkAndEvalPat s undefined p -- FIXME: this is stupid
   return $ (ptele, VUndIn pterm)
 checkAndEvalPat s path UnitPat = do
-  size <- asks ctxSize
+  size <- asks (ctxSize s)
   let u = N.makeUnitVal size path
   return ([], VUnitIn u)
 checkAndEvalPat s path (PairPat p q) = do
@@ -361,7 +369,7 @@ checkAndEvalPat s path (ReflPat p) = do
   (ptele, pterm) <- checkAndEvalPat s path p
   return (ptele, VPair pterm (VPair pterm (VRefl pterm)))
 checkAndEvalPat s path (TensorPat p q) = do
-  size <- asks ctxSize
+  size <- asks (ctxSize s)
   let psl = N.makeSliceVal size (LeftTensorPath : path)
       qsl = N.makeSliceVal size (RightTensorPath : path)
   (ptele, pterm) <- checkAndEvalPat s (LeftTensorPath : path) p
@@ -370,11 +378,11 @@ checkAndEvalPat s path (TensorPat p q) = do
 checkAndEvalPat s path (LeftUnitorPat p) = do
   (ptele, pterm) <- local (ctxExtValZero (VUnitIn (UnitL 0 OneUnit)) VUnit) $ checkAndEvalPat s (LeftUnitorPath : path) p
   pal <- asks ctxPal
-  return (ptele, VTensorPair (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)) (semPalTopSlice pal) pterm)
+  return (ptele, VTensorPair (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)) (sliceIndexToLevel (semPalToShape pal) $ sliceAtType s path) pterm)
 checkAndEvalPat s path (RightUnitorPat p) = do
   (ptele, pterm) <- checkAndEvalPat s (RightUnitorPath : path) p
   pal <- asks ctxPal
-  return (ptele, VTensorPair (semPalTopSlice pal) pterm (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)))
+  return (ptele, VTensorPair (sliceIndexToLevel (semPalToShape pal) $ sliceAtType s path) pterm (SlL 0 SummonedUnitSl) (VUnitIn (UnitL 0 SummonedUnit)))
 
 
 -- The slice to check a type sitting at `path` in a pattern, when the

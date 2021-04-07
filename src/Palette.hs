@@ -1,5 +1,7 @@
 module Palette where
 
+import Control.Applicative (liftA2)
+
 data Palette where
   CommaPal :: Palette -> Palette -> Palette
   OnePal :: Palette
@@ -14,6 +16,16 @@ palDepth OnePal = 0
 palDepth (CommaPal l _) = 1 + palDepth l
 palDepth (TensorPal l _) = 1 + palDepth l
 
+palTopSlice :: Palette -> SlI
+palTopSlice OnePal = IdSl
+palTopSlice OriginPal = IdSl
+palTopSlice (CommaPal l r) = CommaSl (Sub $ palTopSlice l) (Sub $ palTopSlice r)
+palTopSlice (TensorPal l r) = TensorSl (Sub $ palTopSlice l) (Sub $ palTopSlice r)
+
+palTopSliceLevel :: Palette -> SlL
+palTopSliceLevel pal = SlL (palDepth pal) (palTopSlice pal)
+
+-- This is just Maybe now...
 data Choice a = No | Sub a
   deriving (Show, Eq, Functor)
 
@@ -22,6 +34,12 @@ instance Semigroup a => Semigroup (Choice a) where
   (Sub a) <> No = Sub a
   No <> (Sub a) = Sub a
   (Sub a) <> (Sub b) = Sub (a <> b)
+
+instance Applicative Choice where
+  pure = Sub
+
+  (Sub f) <*> m = fmap f m
+  No <*> _m = No
 
 data SlI where
   IdSl :: SlI
@@ -45,10 +63,18 @@ instance Semigroup SlI where
   SummonedUnitSl <> s = s
   l <> r = error $ "Unhandled " ++ show (l, r)
 
+-- Used when guessing slices, but not in typechecking.
 slackSliceTensor :: SlI -> SlI -> SlI
 slackSliceTensor OneSl s = s
 slackSliceTensor s OneSl = s
 slackSliceTensor s t = s <> t
+
+-- A comma version of the above
+-- internalComma :: SlI -> SlI -> SlI
+-- internalComma OneSl OneSl  = OneSl
+-- internalComma (TensorSl (Sub l) No) (TensorSl (Sub r) No) = TensorSl (Sub $ l `internalComma` r) No
+-- internalComma (TensorSl No (Sub l)) (TensorSl No (Sub r)) = TensorSl No (Sub $ l `internalComma` r)
+-- internalComma (CommaSl ll lr) (CommaSl rl rr) = CommaSl (liftA2 internalComma ll rl) (liftA2 internalComma lr rr)
 
 instance Monoid SlI where
   mempty = OneSl
@@ -118,10 +144,31 @@ data SlL = SlL Int SlI | SlEmpty
 data UnitL = UnitL Int UnitI
   deriving (Show, Eq)
 
--- FIXME: this is an incomplete hack until I figure out how to deal with this comma weakening
+-- FIXME: Should simplify?
+sliceIndexToLevel :: Palette -> SlI -> SlL
+sliceIndexToLevel pal s = SlL (palDepth pal) s
+
+sliceLevelToIndex :: Palette -> SlL -> SlI
+sliceLevelToIndex pal (SlL i s) = go pal (palDepth pal - i) s
+  where go _ 0 s = s
+        go (CommaPal l r) i s = CommaSl (Sub $ go l (i-1) s) No
+        go (TensorPal l r) i s = TensorSl (Sub $ go l (i-1) s) No
+
+-- sliceIndexNormalise :: Palette -> SlI -> SlI
+-- sliceIndexNormalise pal (CommaSl (Sub s) (Sub t)) =
+--   case (sliceIndexNormalise pal s, sliceIndexNormalise pal t) of
+--     (IdSl, IdSl) -> IdSl
+--     (s, t) -> CommaSl (Sub s) (Sub t)
+
+-- sliceLevelNormalise :: Palette -> SlL -> SlL
+-- sliceLevelNormalise pal (SlL i s) = go pal (palDepth pal - i) s
+--   where go pal 0 s =
+
+sliceEquivalent :: Palette -> SlL -> SlL -> Bool
+sliceEquivalent _ l r = l == r
+
 splitEquivalent :: Palette -> (SlL, SlL) -> (SlL, SlL) -> Bool
-splitEquivalent pal (l1, SlL 0 SummonedUnitSl) (l2, SlL 0 SummonedUnitSl) = True
-splitEquivalent pal (l1, r1) (l2, r2) = l1 == l2 && r1 == r2
+splitEquivalent pal (l1, r1) (l2, r2) = sliceEquivalent pal l1 l2 && sliceEquivalent pal r1 r2
 
 data SemPal where
   OriginSemPal :: SemPal
@@ -144,6 +191,9 @@ semPalToShape (UnitSemPal u) = UnitPal
 instance Semigroup SlL where
 instance Monoid SlL where
 
+-- internalCommaL :: SlL -> SlL -> SlL
+-- internalCommaL = undefined
+
 instance Semigroup UnitL where
 instance Monoid UnitL where
 
@@ -152,14 +202,23 @@ semPalDepth OriginSemPal = 0
 semPalDepth (CommaSemPal l _) = 1 + semPalDepth l
 semPalDepth (TensorSemPal _ l _ _) = 1 + semPalDepth l
 
-semPalTopSlice :: SemPal -> SlL
-semPalTopSlice pal = SlL (semPalDepth pal) IdSl
+
+
+semPalTopRightSlice :: SemPal -> SlL
+semPalTopRightSlice pal = SlL (semPalDepth pal) (TensorSl No (Sub IdSl))
+
+slExtHom :: Palette -> SlL -> SlL
+slExtHom = undefined
+
+slExtMatch :: Palette -> SlL -> SlL
+slExtMatch pal s = sliceIndexToLevel (CommaPal pal OnePal) $ CommaSl (Sub $ sliceLevelToIndex pal s) (Sub IdSl)
 
 lookupSlice :: {- current slice -} SlL -> SemPal -> SlI -> SlL
 lookupSlice d pal IdSl = d
 lookupSlice d pal OneSl = SlL 0 OneSl
 lookupSlice d (CommaSemPal l _) (CommaSl (Sub s) No) = lookupSlice d l s
-lookupSlice d (CommaSemPal _ r) (CommaSl No (Sub s)) = lookupSlice d r s -- FIXME: Is this enough?
+lookupSlice d (CommaSemPal _ r) (CommaSl No (Sub s)) = lookupSlice d r s
+lookupSlice d (CommaSemPal _ _) (CommaSl (Sub _) (Sub _)) = d -- We must be at the top level
 lookupSlice d (TensorSemPal sl l sr r) (TensorSl (Sub l') (Sub r')) = (lookupSlice sl l l') <> (lookupSlice sr r r')
 lookupSlice d (TensorSemPal sl l sr r) (TensorSl No (Sub r')) = lookupSlice sr r r'
 lookupSlice d (TensorSemPal sl l sr r) (TensorSl (Sub l') No) = (lookupSlice sl l l')

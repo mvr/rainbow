@@ -1,0 +1,64 @@
+diff a/src/Driver.hs b/src/Driver.hs	(rejected hunks)
+@@ -131,22 +131,47 @@ bindsExtCommaPal pal state@(BindState { bindPalette })
+ --   put (i+1)
+ --   return $ "?" ++ n ++ show ix
+ 
+-patVars :: C.Pat -> [BindEntry]
+-patVars p = go Nothing p
++patBinds :: C.Pat -> BindM (BindPalette, [BindEntry])
++patBinds p = go Nothing p
+   where
+-  go c C.OnePat = []
+-  go c (C.UnitPat _) = []
+-  go c (C.VarPat x _) = [BindTerm (Just x) c]
+-  go c (C.ZeroVarPat x _) = [BindTerm (Just x) Nothing]
+-  go c (C.PairPat p q) = go c q ++ go c p
+-  go c (C.TensorPat l p r q) = go (Just r) q ++ go (Just l) p
+-  go c (C.UndInPat p) = go Nothing p
+-
+-bindPat :: C.Pat -> BindM S.Pat
+-bindPat (C.OnePat) = pure S.OnePat
+-bindPat (C.UnitPat _) = pure S.UnitPat
+-bindPat (C.VarPat _ ty) = S.VarPat <$> bind ty
+-bindPat (C.ZeroVarPat _ ty) = S.ZeroVarPat <$> bind ty
++  go :: Maybe Colour -> C.Pat -> BindM (BindPalette, [BindEntry])
++  go c C.OnePat = pure (OnePal, [])
++  go c (C.VarPat x _) = pure (OnePal, [BindTerm (Just x) c])
++  go c (C.UnitPat u) = pure $ (UnitPal u, [])
++  go c (C.PairPat p q) = do
++    (ppal, pvars) <- go c p
++    (qpal, qvars) <- go c q
++    return $ (CommaPal ppal qpal, qvars ++ pvars)
++  go c (C.TensorPat sl p sr q) = do
++    sl' <- case sl of
++      Nothing -> genCol
++      Just c -> pure $ NamedCol c
++    sr' <- case sr of
++      Nothing -> genCol
++      Just c -> pure $ NamedCol c
++    (ppal, pvars) <- go (Just sl') p
++    (qpal, qvars) <- go (Just sr') q
++    return $ (TensorPal (LabelPal sl' ppal) (LabelPal sr' qpal), qvars ++ pvars)
++  go c (C.UndInPat p) = do
++    (ppal, pvars) <- go Nothing p
++    pure (OnePal, pvars)
++
++-- patVars :: BindPalette -> C.Pat -> [BindEntry]
++-- patVars p = go Nothing p
++--   where
++--   go c C.OnePat = []
++--   go c (C.UnitPat _) = []
++--   go c (C.VarPat x _) = [BindTerm (Just x) c]
++--   go c (C.ZeroVarPat x _) = [BindTerm (Just x) Nothing]
++--   go c (C.PairPat p q) = go c q ++ go c p
++--   go c (C.TensorPat l p r q) = go (Just r) q ++ go (Just l) p
++--   go c (C.UndInPat p) = go Nothing p
++
++bindPat :: BindPalette -> C.Pat -> BindM S.Pat
++bindPat _ (C.OnePat) = pure S.OnePat
++bindPat _ (C.UnitPat _) = pure S.UnitPat
++bindPat _ (C.VarPat _ ty) = S.VarPat <$> bind ty
++bindPat _ (C.ZeroVarPat _ ty) = S.ZeroVarPat <$> bind ty
+ bindPat (C.UndInPat p) = S.UndInPat <$> bindPat p
+ bindPat (C.PairPat p q) = do
+   p' <- bindPat p

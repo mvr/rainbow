@@ -45,6 +45,14 @@ data BindPalette where
   LabelPal :: Colour -> BindPalette -> BindPalette
   deriving (Show)
 
+palTopSl :: BindPalette -> S.SlI
+palTopSl OnePal = S.IdSl
+palTopSl OriginPal = S.IdSl
+palTopSl (UnitPal _) = S.IdSl
+palTopSl (LabelPal _ p) = palTopSl p
+palTopSl (CommaPal l r) = S.CommaSl (S.Sub $ palTopSl l) (S.Sub $ palTopSl r)
+palTopSl (TensorPal l r) = S.TensorSl (S.Sub $ palTopSl l) (S.Sub $ palTopSl r)
+
 data BindPat where
   OnePat :: BindPat
   UnitPat :: C.Ident -> BindPat
@@ -66,6 +74,8 @@ patPalette (UnitPat u) = UnitPal u
 patPalette (PairPat p q) = CommaPal (patPalette p) (patPalette q)
 patPalette (TensorPat sl p sr q) = TensorPal (LabelPal sl (patPalette p)) (LabelPal sr (patPalette q))
 patPalette (UndInPat p) = OnePal
+patPalette (LeftUnitorPat p) = patPalette p
+patPalette (RightUnitorPat p) = patPalette p
 
 -- The name is optional so we can conveniently write
 -- e.g. non-dependent sums and products
@@ -122,9 +132,9 @@ bindColour :: BindPalette -> Colour -> Maybe S.SlI
 bindColour OnePal col = Nothing
 bindColour OriginPal col = Nothing
 bindColour (UnitPal _) col = Nothing
-bindColour (LabelPal i s) col
-  | i == col = Just S.IdSl
-  | otherwise = bindColour s col
+bindColour (LabelPal i p) col
+  | i == col = Just (palTopSl p)
+  | otherwise = bindColour p col
 bindColour (CommaPal l r) col =
   case (bindColour l col, bindColour r col) of
     (Nothing, Nothing) -> Nothing
@@ -144,7 +154,9 @@ bindSlice (Slice cols) = do
   return $ foldr S.slackSliceTensor S.OneSl <$> traverse (bindColour pal) cols
 bindSlice SliceOne = return $ Just S.OneSl
 bindSlice (SliceSummonedUnit l) = return $ Just S.SummonedUnitSl
-bindSlice SliceTop = return $ Just S.IdSl
+bindSlice SliceTop = do
+  pal <- asks bindPalette
+  return $ Just (palTopSl pal)
 
 findUnitLabel :: BindPalette -> C.Ident -> Maybe S.UnitI
 findUnitLabel OnePal col = Nothing
@@ -344,7 +356,7 @@ bind (C.Match t z mot patterm br) = do
   let pat = fromJust $ C.comprehendPat patterm
   pat' <- fillPatCols pat
 
-  boundmot <- local (bindsExtLam z) $ bind mot
+  boundmot <- local (bindsExtCommaPal OnePal . bindsExtLam z) $ bind mot
 
   let patpal = patPalette pat'
   boundpat <- local (bindsExtCommaPal patpal) $ bindPat pat'

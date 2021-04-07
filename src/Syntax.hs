@@ -24,6 +24,7 @@ data PatShape where
   OneShape :: PatShape
   UnitShape :: PatShape
   VarShape :: PatShape
+  ReflShape :: PatShape -> PatShape
   PairShape :: PatShape -> PatShape -> PatShape
   TensorShape :: PatShape -> PatShape -> PatShape
   LeftUnitorShape :: PatShape -> PatShape
@@ -50,15 +51,6 @@ patToShape (RightUnitorPat p) = RightUnitorShape (patToShape p)
 
 shapeToPal :: PatShape -> Palette
 shapeToPal = undefined
-
--- To represent where we are in a pattern
--- Note: we read a path backwards: if `(a, b), (c, d)` then
--- `b` has path RightCommaPath (LeftCommaPath StartPath)
-
-data PatPathPiece = LeftCommaPath | RightCommaPath | LeftTensorPath | RightTensorPath | LeftUnitorPath | RightUnitorPath
-  deriving (Show, Eq)
-
-type PatPath = [PatPathPiece]
 
 data Term where
   Check :: Term -> Ty -> Term
@@ -104,9 +96,8 @@ data Term where
   HomApp :: SlI -> Term -> SlI -> Term -> Term
   deriving (Show, Eq)
 
--- The slice is the current top slice,
--- only needed to we can do the unitors!
-data SemEnv = SemEnv SlL SemPal [Value]
+-- The slice is the current top slice, used when going under a cartesian binder.
+data SemEnv = SemEnv { semEnvTopSlice :: SlL, semEnvPal :: SemPal, semEnv :: [Value] }
   deriving ()
 
 semEnvLength :: SemEnv -> Int
