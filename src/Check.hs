@@ -146,7 +146,7 @@ assertEq s ty a b = do
     throwError $ "Expected " ++ show a ++ " to equal " ++ show b
 
 check :: SlI -> Term -> VTy -> CheckM ()
-check s t ty | traceShow ("Check: " ++ show (s, t, ty)) False = undefined
+-- check s t ty | traceShow ("Check: " ++ show (s, t, ty)) False = undefined
 
 check s (Univ i) (VUniv j) | i < j = return ()
 check s (Univ i) t = throwError $ "Expecting universe over " ++ show i
@@ -204,10 +204,6 @@ check s (Tensor aty bty) (VUniv l) = do
 check s (Tensor aty bclo) t = throwError "Expected universe"
 
 check s t@(TensorPair asl a bsl b) (VTensor aty bclo) = do
-  -- traceShow "checking tensor pair" $ return ()
-  -- e <- ask
-  -- traceShow e $ return ()
-
   when (not $ validSplitOf s (asl, bsl)) $ throwError $ "Invalid split of " ++ show s ++ " into " ++ show (asl, bsl)
 
   check asl a aty
@@ -235,17 +231,13 @@ check s (HomLam b) (VHom aty bclo) = do
 check s (HomLam b) ty = throwError "Unexpected hom lambda"
 
 check s a ty = do
-  -- e <- asks ctxToEnv
-  -- traceShow e $ return ()
   ty' <- synth s a
   size <- asks (ctxSize s)
   when (not $ N.eqTy size ty ty') $ throwError $ "type mismatch, expected: " ++ show ty ++ " got " ++ show ty'
 
 synth :: SlI -> Term -> CheckM VTy
-synth s t | traceShow ("Synth: " ++ show (s, t)) False = undefined
+-- synth s t | traceShow ("Synth: " ++ show (s, t)) False = undefined
 synth s (Var i) = do
-  -- s <- ask
-  -- traceShow s (return ())
   (ty, ann) <- asks (ctxLookupVar i)
   case ann of
     Marked -> throwError $ "Cannot use variable " ++ show i ++ " because it is marked"
