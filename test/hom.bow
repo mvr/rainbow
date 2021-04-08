@@ -11,3 +11,12 @@ let homcurry : (A B C : U<0>) -> ((_A ⊗ _B) ⊸ _C) -> (_A ⊸ (_B ⊸ _C)) =
   hom a -o
   hom b -o
   (f @ << a, b >>)
+
+let homuncurry : (A B C : U<0>) -> (_A ⊸ (_B ⊸ _C)) -> ((_A ⊗ _B) ⊸ _C) = 
+  fun A B C f ->
+  hom p -o
+  match << f , p >> at _C with 
+    << (f at (_A ⊸ (_B ⊸ _C))), <<(a at _A) , (b at _B)>> >> -> ((f @ a) @ b)
+
+let hometa : (A B : U<0>) -> (f : _A ⊸ _B) -> Id (_A ⊸ _B) f (hom a -o (f @ a)) = 
+  fun A B f -> refl f

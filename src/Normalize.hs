@@ -97,13 +97,13 @@ doUndOut (VNeutral (VUnd ty) ne) = VNeutral ty (NUndOut ne)
 doUndOut (VNeutral ty ne) = error $ "Unexpected neutral " ++ show ty ++ "in doUndOut"
 doUndOut t = error $ "Unexpected term " ++ show t ++ "in doUndOut"
 
-doHomApp :: SlL -> Value -> SlL -> Value -> Value
--- doHomApp fsl (VHomLam clos) asl a = doHomClosure fsl clos asl a
--- doHomApp fsl (VNeutral (VPi aty bclo) ne) asl a =
---   let bty = doHomClosure fsl bclo asl a in
---     VNeutral bty (NHomApp fsl ne asl (Normal aty a))
--- doHomApp _ (VNeutral ty ne) _ a = error $ "Unexpected neutral " ++ show ty ++ "in doHomApp"
-doHomApp _ t _ a = error $ "Unexpected term " ++ show t ++ " in doHomApp"
+doHomApp :: SlL -> SlL -> Value -> SlL -> Value -> Value
+doHomApp d fsl (VHomLam clos) asl a = doHomClosure d fsl clos asl a
+doHomApp d fsl (VNeutral (VHom aty bclo) ne) asl a =
+  let bty = doHomClosure d fsl bclo asl a in
+    VNeutral bty (NHomApp fsl ne asl (Normal aty a))
+doHomApp _ _ (VNeutral ty ne) _ a = error $ "Unexpected neutral " ++ show ty ++ "in doHomApp"
+doHomApp _ _ t _ a = error $ "Unexpected term " ++ show t ++ " in doHomApp"
 
 doMatch :: SlL -> Value -> Closure -> PatShape -> VPat -> ClosurePat -> Value
 doMatch s a mot patsh pat br = case matchPat patsh a of
@@ -159,9 +159,9 @@ doClosure :: SlL -> Closure -> Value -> Value
 doClosure s (Closure t (SemEnv _ pal env)) a = eval (SemEnv s pal (a : env)) t
 doClosure s (ClosureFunc f) a = f a
 
--- doHomClosure :: SlL -> Closure -> SlL -> Value -> Value
--- doHomClosure csl (Closure t (SemEnv pal env)) asl a = eval (SemEnv (TensorSemPal csl pal asl OneSemPal) (a : env)) t
--- doHomClosure _ (ClosureFunc f) _ a = f a
+doHomClosure :: SlL -> SlL -> Closure -> SlL -> Value -> Value
+doHomClosure s csl (Closure t (SemEnv d pal env)) asl a = eval (SemEnv s (TensorSemPal csl pal asl OneSemPal) (a : env)) t
+doHomClosure _ _ (ClosureFunc f) _ a = f a
 
 doClosurePat :: ClosurePat -> SemTele -> Value
 doClosurePat (ClosurePat t env) env' = eval (semEnvComma env env') t
@@ -205,7 +205,7 @@ eval env Unit = VUnit
 eval env (UnitIn u) = VUnitIn (envLookupUnit env u)
 eval env (Hom aty bty) = VHom (eval env aty) (Closure bty env)
 eval env (HomLam b) = VHomLam (Closure b env)
-eval env (HomApp fsl f asl a) = doHomApp (envLookupSlice env fsl) (eval env f) (envLookupSlice env asl) (eval env a)
+eval env (HomApp fsl f asl a) = doHomApp (semEnvTopSlice env) (envLookupSlice env fsl) (eval env f) (envLookupSlice env asl) (eval env a)
 
 --------------------------------------------------------------------------------
 -- Equality
@@ -378,8 +378,8 @@ eqNF size (VHom aty1 bclo1, f1) (VHom aty2 bclo2, f2) =
   let var = makeVarValS aty1 size
       newsize = extSizeHomLam size
   in
-  eqNF newsize (doHomClosure (sizeTopSlice size) bclo1 (sizeTopRightSl newsize) var, doHomApp (sizeTopSlice size) f1 (sizeTopRightSl newsize) var)
-               (doHomClosure (sizeTopSlice size) bclo2 (sizeTopRightSl newsize) var, doHomApp (sizeTopSlice size) f2 (sizeTopRightSl newsize) var)
+  eqNF newsize (doHomClosure (sizeTopSlice newsize) (sizeTopSlice size) bclo1 (sizeTopRightSl newsize) var, doHomApp (sizeTopSlice newsize) (sizeTopSlice size) f1 (sizeTopRightSl newsize) var)
+               (doHomClosure (sizeTopSlice newsize) (sizeTopSlice size) bclo2 (sizeTopRightSl newsize) var, doHomApp (sizeTopSlice newsize) (sizeTopSlice size) f2 (sizeTopRightSl newsize) var)
 eqNF _ _ _  = False
 
 eqNE :: Size -> Neutral -> Neutral -> Bool
