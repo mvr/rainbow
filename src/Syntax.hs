@@ -106,11 +106,17 @@ semEnvLength (SemEnv _ _ env) = length env
 data SemTele = SemTele SemPal [Value]
   deriving ()
 
-semEnvExt :: SemEnv -> [Value] -> SemEnv
-semEnvExt (SemEnv s pal env) env' = (SemEnv s pal (env' ++ env))
-
 semEnvComma :: SemEnv -> SemTele -> SemEnv
-semEnvComma (SemEnv s pal env) (SemTele pal' env') = (SemEnv s (CommaSemPal pal pal') (env' ++ env))
+semEnvComma (SemEnv s pal env) (SemTele pal' env') = (SemEnv (slExtMatch (semPalToShape pal) s) (CommaSemPal pal pal') (env' ++ env))
+
+semEnvCommaSingle :: SemEnv -> Value -> SemEnv
+semEnvCommaSingle env v = semEnvComma env (SemTele OneSemPal [v])
+
+semEnvExtSilent :: SemEnv -> [Value] -> SemEnv
+semEnvExtSilent (SemEnv s pal env) env' = (SemEnv s pal (env' ++ env))
+
+semEnvExtSilentSingle :: SemEnv -> Value -> SemEnv
+semEnvExtSilentSingle env v = semEnvExtSilent env [v]
 
 -- semEnvTensor :: SlL -> SemEnv -> SlL -> SemTele -> SemEnv
 -- semEnvTensor sl (SemEnv pal env) sr (SemTele pal' env') = (SemEnv (TensorSemPal sl pal sr pal') (env' ++ env))

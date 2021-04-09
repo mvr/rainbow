@@ -178,9 +178,6 @@ data SemPal where
   TensorSemPal :: SlL -> SemPal -> SlL ->  SemPal -> SemPal
   deriving (Eq, Show)
 
--- palToSemPal :: Palette -> SemPal
--- palToSemPal = undefined
-
 semPalToShape :: SemPal -> Palette
 semPalToShape OriginSemPal = OnePal
 semPalToShape OneSemPal = OnePal
@@ -190,9 +187,6 @@ semPalToShape (UnitSemPal u) = UnitPal
 
 instance Semigroup SlL where
 instance Monoid SlL where
-
--- internalCommaL :: SlL -> SlL -> SlL
--- internalCommaL = undefined
 
 instance Semigroup UnitL where
 instance Monoid UnitL where
@@ -233,9 +227,3 @@ lookupUnit (TensorSemPal _ l _ r) (TensorUnit (Sub l') (Sub r')) = lookupUnit l 
 lookupUnit (TensorSemPal _ l _ r) (TensorUnit (Sub l') No) = lookupUnit l l'
 lookupUnit (TensorSemPal _ l _ r) (TensorUnit No (Sub r')) = lookupUnit r r'
 lookupUnit _ SummonedUnit = UnitL 0 SummonedUnit
-
--- sliceIxToLvl :: Palette -> SlI -> SlL
--- sliceIxToLvl = undefined
-
--- sliceLvlToIx :: Palette -> SlL -> SlI
--- sliceLvlToIx = undefined

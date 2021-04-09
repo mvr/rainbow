@@ -166,11 +166,8 @@ doHomClosure _ _ (ClosureFunc f) _ a = f a
 doClosurePat :: ClosurePat -> SemTele -> Value
 doClosurePat (ClosurePat t env) env' = eval (semEnvComma env env') t
 
--- doClosurePatVarsOnly :: ClosurePat -> [Value] -> Value
--- doClosurePatVarsOnly (ClosurePat t env) env' = eval (semEnvComma env env') t
-
 doPatClosure :: PatClosure -> [Value] -> VPat
-doPatClosure (PatClosure t env) env' = evalPat (semEnvExt env env') t
+doPatClosure (PatClosure t env) env' = evalPat (semEnvExtSilent env env') t
 
 eval :: SemEnv -> Term -> Value
 -- eval env t | traceShow t False = undefined

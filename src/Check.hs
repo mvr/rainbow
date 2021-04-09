@@ -20,9 +20,6 @@ data EntryAnn = Marked | Col SlI | Global
 data CtxEntry = CtxEntry Value VTy EntryAnn
   deriving (Show)
 
-data SemCtx = SemCtx { ctxPal :: SemPal, ctxVars :: [CtxEntry] }
-  deriving (Show)
-
 entryLiftComma :: CtxEntry -> CtxEntry
 entryLiftComma (CtxEntry v ty (Col s)) = CtxEntry v ty (Col (CommaSl (Sub s) No))
 entryLiftComma e = e
@@ -33,6 +30,22 @@ entryLiftTensor e = e
 
 entryToValue :: CtxEntry -> Value
 entryToValue (CtxEntry t _ _) = t
+
+data SemCtx = SemCtx { ctxPal :: SemPal, ctxVars :: [CtxEntry] }
+  deriving (Show)
+
+ctxEmpty :: SemCtx
+ctxEmpty = SemCtx OriginSemPal []
+
+ctxLen :: SemCtx -> Int
+ctxLen = length . ctxVars
+
+ctxSize :: SlI -> SemCtx -> Size
+ctxSize s ctx = let pal = semPalToShape $ ctxPal ctx in N.Size pal (sliceIndexToLevel pal s) (ctxLen ctx)
+
+ctxLookupVar :: Int -> SemCtx -> (VTy, EntryAnn)
+ctxLookupVar ix (SemCtx _ vars) = case vars !! ix of
+  (CtxEntry _ ty ann) -> (ty, ann)
 
 ctxToEnv :: SemCtx -> SemEnv
 ctxToEnv (SemCtx pal vars) = SemEnv (palTopSliceLevel $ semPalToShape pal) pal (fmap entryToValue vars)
@@ -45,35 +58,18 @@ data SemCtxTele = SemCtxTele { telePal :: SemPal, teleVars :: [CtxEntry] }
 data SemHomTele = SemHomTele { homTelePal :: SemPal, homTeleVars :: [CtxEntry] }
   deriving (Show)
 
-semCtxComma :: SemCtx -> SemCtxTele -> SemCtx
-semCtxComma (SemCtx pal env) (SemCtxTele pal' env') = (SemCtx (CommaSemPal pal pal') (env' ++ fmap entryLiftComma env))
+ctxExtComma :: SemCtx -> SemCtxTele -> SemCtx
+ctxExtComma (SemCtx pal env) (SemCtxTele pal' env') = (SemCtx (CommaSemPal pal pal') (env' ++ fmap entryLiftComma env))
 
-semCtxTensor :: SlL -> SemCtx -> SlL -> SemCtxTele -> SemCtx
-semCtxTensor sl (SemCtx pal env) sr (SemCtxTele pal' env') = (SemCtx (TensorSemPal sl pal sr pal') (env' ++ fmap entryLiftTensor env))
+ctxExtCommaSilent :: [CtxEntry] -> SemCtx -> SemCtx
+ctxExtCommaSilent es (SemCtx pal vars) = SemCtx pal (es ++ vars)
 
--- FIXME: Aren't used anywhere? Also, they don't lift the colours like the previous
--- semTeleComma :: SemCtxTele -> SemCtxTele -> SemCtxTele
--- semTeleComma (SemCtxTele pal env) (SemCtxTele pal' env') = (SemCtxTele (CommaSemPal pal pal') (env' ++ env))
-
--- semTeleTensor :: SlL -> SemCtxTele -> SlL -> SemCtxTele -> SemCtxTele
--- semTeleTensor sl (SemCtxTele pal env) sr (SemCtxTele pal' env') = (SemCtxTele (TensorSemPal sl pal sr pal') (env' ++ env))
-
--- semTeleToEnv :: SemCtxTele -> SemEnv
--- semTeleToEnv (SemCtxTele pal vars) = SemEnv pal (fmap (\(CtxEntry v _ _) -> v) vars)
-
-ctxEmpty :: SemCtx
-ctxEmpty = SemCtx OriginSemPal []
-
-ctxLookupVar :: Int -> SemCtx -> (VTy, EntryAnn)
-ctxLookupVar ix (SemCtx _ vars) = case vars !! ix of
-  (CtxEntry _ ty ann) -> (ty, ann)
+-- semCtxTensor :: SlL -> SemCtx -> SlL -> SemCtxTele -> SemCtx
+-- semCtxTensor sl (SemCtx pal env) sr (SemCtxTele pal' env') = (SemCtx (TensorSemPal sl pal sr pal') (env' ++ fmap entryLiftTensor env))
 
 -- Without changing the palette at all
 ctxExtVar :: Value -> VTy -> SlI -> SemCtx -> SemCtx
 ctxExtVar a aty c (SemCtx pal vars) = SemCtx pal ((CtxEntry a aty (Col c)):vars)
-
-ctxExtMany :: [CtxEntry] -> SemCtx -> SemCtx
-ctxExtMany es (SemCtx pal vars) = SemCtx pal (es ++ vars)
 
 ctxExtGlobal :: Value -> VTy -> SemCtx -> SemCtx
 ctxExtGlobal a aty (SemCtx pal vars) = SemCtx pal ((CtxEntry a aty Global):vars)
@@ -87,31 +83,6 @@ ctxExtHom a aty (SemCtx pal vars) = SemCtx (TensorSemPal sl pal sr OneSemPal) ((
         sl = SlL d IdSl
         sr = SlL (d+1) (TensorSl No (Sub IdSl))
         c  = (TensorSl No (Sub IdSl))
-
--- patCartTele :: Pat -> (Palette, [CtxEntry])
--- patCartTele = undefined
-
--- cartWkEntry :: CtxEntry -> CtxEntry
--- cartWkEntry = undefined
-
--- ctxExtCartPat :: Pat -> SemCtx -> SemCtx
--- ctxExtCartPat pat (SemCtx pal vars) = let (palext, ctxext) = patCartTele pat in
---   SemCtx (CommaPal pal palext) (ctxext ++ fmap cartWkEntry vars)
-
-ctxLen :: SemCtx -> Int
-ctxLen = length . ctxVars
-
-ctxSize :: SlI -> SemCtx -> Size
-ctxSize s ctx = let pal = semPalToShape $ ctxPal ctx in N.Size pal (sliceIndexToLevel pal s) (ctxLen ctx)
-
-envExtComma :: SemEnv -> Value -> SemEnv
-envExtComma (SemEnv s pal env) v = SemEnv (slExtMatch (semPalToShape pal) s) (CommaSemPal pal OneSemPal) (v : env)
-
-envExtSilent :: SemEnv -> Value -> SemEnv
-envExtSilent (SemEnv s pal env) v = SemEnv s pal (v : env)
-
--- teleToEnv :: SemTele -> SemEnv
--- teleToEnv (SemTele _ vars) = fmap (\(t, _, _) -> t) vars
 
 newtype CheckM a = CheckM (ReaderT SemCtx (ExceptT Err Identity) a)
   deriving (Functor, Applicative, Monad, MonadError Err, MonadReader SemCtx)
@@ -297,7 +268,7 @@ synth s (Match tar mot pat branch) = do
 
   let pal = N.makePatPal size [RightCommaPath] (patToShape pat)
 
-  (pattele, patterm) <- local (flip semCtxComma (SemCtxTele pal [])) $ checkAndEvalPat s [] pat
+  (pattele, patterm) <- local (flip ctxExtComma (SemCtxTele pal [])) $ checkAndEvalPat s [] pat
 
   semEnv <- asks ctxToEnv
 
@@ -305,15 +276,15 @@ synth s (Match tar mot pat branch) = do
       tarty  = N.recoverPatType vpat
       motvar = N.makeVarValS tarty size
 
-  local (flip semCtxComma (SemCtxTele OneSemPal [CtxEntry motvar tarty (Col (CommaSl (Sub s) (Sub IdSl)))])) $ checkTy s mot
+  local (flip ctxExtComma (SemCtxTele OneSemPal [CtxEntry motvar tarty (Col (CommaSl (Sub s) (Sub IdSl)))])) $ checkTy s mot
 
   check s tar tarty
 
   let (_, patterm) = N.makeVPatCartTele (N.extSizeComma size (SemTele pal [])) vpat
 
-  local (flip semCtxComma (SemCtxTele pal pattele)) $ check (CommaSl (Sub s) (Sub IdSl)) branch (N.eval (envExtComma semEnv patterm) mot)
+  local (flip ctxExtComma (SemCtxTele pal pattele)) $ check (CommaSl (Sub s) (Sub IdSl)) branch (N.eval (semEnvCommaSingle semEnv patterm) mot)
 
-  return $ N.eval (envExtSilent semEnv (N.eval semEnv tar)) mot
+  return $ N.eval (semEnvExtSilentSingle semEnv (N.eval semEnv tar)) mot
 
 synth s a = throwError $ "cannot synth the type of " ++ show a
 
@@ -355,7 +326,7 @@ checkAndEvalPat s path UnitPat = do
   return ([], VUnitIn u)
 checkAndEvalPat s path (PairPat p q) = do
   (ptele, pterm) <- checkAndEvalPat s (LeftCommaPath : path) p
-  (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightCommaPath : path) q
+  (qtele, qterm) <- local (ctxExtCommaSilent ptele) $ checkAndEvalPat s (RightCommaPath : path) q
   return (qtele ++ ptele, VPair pterm qterm)
 checkAndEvalPat s path (ReflPat p) = do
   (ptele, pterm) <- checkAndEvalPat s path p
@@ -365,7 +336,7 @@ checkAndEvalPat s path (TensorPat p q) = do
   let psl = N.makeSliceVal size (LeftTensorPath : path)
       qsl = N.makeSliceVal size (RightTensorPath : path)
   (ptele, pterm) <- checkAndEvalPat s (LeftTensorPath : path) p
-  (qtele, qterm) <- local (ctxExtMany ptele) $ checkAndEvalPat s (RightTensorPath : path) q
+  (qtele, qterm) <- local (ctxExtCommaSilent ptele) $ checkAndEvalPat s (RightTensorPath : path) q
   return (qtele ++ ptele, VTensorPair psl pterm qsl qterm)
 checkAndEvalPat s path (LeftUnitorPat p) = do
   (ptele, pterm) <- local (ctxExtValZero (VUnitIn (UnitL 0 OneUnit)) VUnit) $ checkAndEvalPat s (LeftUnitorPath : path) p
