@@ -31,24 +31,29 @@ entryLiftTensor e = e
 entryToValue :: CtxEntry -> Value
 entryToValue (CtxEntry t _ _) = t
 
-data SemCtx = SemCtx { ctxPal :: SemPal, ctxVars :: [CtxEntry] }
+data SemCtx = SemCtx { ctxTopSlice :: SlI, ctxPal :: SemPal, ctxVars :: [CtxEntry] }
   deriving (Show)
 
 ctxEmpty :: SemCtx
-ctxEmpty = SemCtx OriginSemPal []
+ctxEmpty = SemCtx IdSl OriginSemPal []
 
 ctxLen :: SemCtx -> Int
 ctxLen = length . ctxVars
 
-ctxSize :: SlI -> SemCtx -> Size
-ctxSize s ctx = let pal = semPalToShape $ ctxPal ctx in N.Size pal (sliceIndexToLevel pal s) (ctxLen ctx)
+ctxSize :: SemCtx -> Size
+ctxSize ctx =
+  let pal = semPalToShape $ ctxPal ctx
+  in N.Size pal (sliceIndexToLevel pal (ctxTopSlice ctx)) (ctxLen ctx)
 
 ctxLookupVar :: Int -> SemCtx -> (VTy, EntryAnn)
-ctxLookupVar ix (SemCtx _ vars) = case vars !! ix of
+ctxLookupVar ix (SemCtx _ _ vars) = case vars !! ix of
   (CtxEntry _ ty ann) -> (ty, ann)
 
+ctxSetSlice :: SlI -> SemCtx -> SemCtx
+ctxSetSlice s ctx = ctx { ctxTopSlice = s }
+
 ctxToEnv :: SemCtx -> SemEnv
-ctxToEnv (SemCtx pal vars) = SemEnv (palTopSliceLevel $ semPalToShape pal) pal (fmap entryToValue vars)
+ctxToEnv (SemCtx s pal vars) = SemEnv (sliceIndexToLevel (semPalToShape pal) s) pal (fmap entryToValue vars)
 
 -- "Telescopes", two different versions for the two different ways the
 -- palettes can be combined. Hopefully this duplication is worth it in
@@ -59,30 +64,29 @@ data SemHomTele = SemHomTele { homTelePal :: SemPal, homTeleVars :: [CtxEntry] }
   deriving (Show)
 
 ctxExtComma :: SemCtx -> SemCtxTele -> SemCtx
-ctxExtComma (SemCtx pal env) (SemCtxTele pal' env') = (SemCtx (CommaSemPal pal pal') (env' ++ fmap entryLiftComma env))
+ctxExtComma (SemCtx s pal env) (SemCtxTele pal' env') = SemCtx (CommaSl (Sub s) (Sub IdSl)) (CommaSemPal pal pal') (env' ++ fmap entryLiftComma env)
 
 ctxExtCommaSilent :: [CtxEntry] -> SemCtx -> SemCtx
-ctxExtCommaSilent es (SemCtx pal vars) = SemCtx pal (es ++ vars)
+ctxExtCommaSilent es (SemCtx s pal vars) = SemCtx s pal (es ++ vars)
 
 -- semCtxTensor :: SlL -> SemCtx -> SlL -> SemCtxTele -> SemCtx
 -- semCtxTensor sl (SemCtx pal env) sr (SemCtxTele pal' env') = (SemCtx (TensorSemPal sl pal sr pal') (env' ++ fmap entryLiftTensor env))
 
 -- Without changing the palette at all
-ctxExtVar :: Value -> VTy -> SlI -> SemCtx -> SemCtx
-ctxExtVar a aty c (SemCtx pal vars) = SemCtx pal ((CtxEntry a aty (Col c)):vars)
+ctxExtVar :: Value -> VTy -> SemCtx -> SemCtx
+ctxExtVar a aty (SemCtx s pal vars) = SemCtx s pal ((CtxEntry a aty (Col s)):vars)
 
 ctxExtGlobal :: Value -> VTy -> SemCtx -> SemCtx
-ctxExtGlobal a aty (SemCtx pal vars) = SemCtx pal ((CtxEntry a aty Global):vars)
+ctxExtGlobal a aty (SemCtx s pal vars) = SemCtx s pal ((CtxEntry a aty Global):vars)
 
 ctxExtValZero :: Value -> VTy -> SemCtx -> SemCtx
-ctxExtValZero a aty (SemCtx pal vars) = SemCtx pal ((CtxEntry a aty Marked):vars)
+ctxExtValZero a aty (SemCtx s pal vars) = SemCtx s pal ((CtxEntry a aty Marked):vars)
 
 ctxExtHom :: Value -> VTy -> SemCtx -> SemCtx
-ctxExtHom a aty (SemCtx pal vars) = SemCtx (TensorSemPal sl pal sr OneSemPal) ((CtxEntry a aty (Col c)):(fmap entryLiftTensor vars))
-  where d = semPalDepth pal
-        sl = SlL d IdSl
-        sr = SlL (d+1) (TensorSl No (Sub IdSl))
-        c  = (TensorSl No (Sub IdSl))
+ctxExtHom a aty (SemCtx s pal vars) = SemCtx (TensorSl (Sub s) (Sub IdSl)) (TensorSemPal sl pal sr OneSemPal) ((CtxEntry a aty (Col c)):(fmap entryLiftTensor vars))
+  where sl = sliceIndexToLevel (semPalToShape pal) s
+        sr = SlL (1 + semPalDepth pal) (TensorSl No (Sub IdSl))
+        c = (TensorSl No (Sub IdSl))
 
 newtype CheckM a = CheckM (ReaderT SemCtx (ExceptT Err Identity) a)
   deriving (Functor, Applicative, Monad, MonadError Err, MonadReader SemCtx)
@@ -110,205 +114,208 @@ evalAndVar aty = do
   let var = makeVarVal atyval lev
   return (atyval, var)
 
-assertEq :: SlI -> VTy -> Value -> Value -> CheckM ()
-assertEq s ty a b = do
-  size <- asks (ctxSize s)
+assertEq :: VTy -> Value -> Value -> CheckM ()
+assertEq ty a b = do
+  size <- asks ctxSize
   unless (N.eqNF size (ty, a) (ty, b)) $
     throwError $ "Expected " ++ show a ++ " to equal " ++ show b
 
-check :: SlI -> Term -> VTy -> CheckM ()
+check :: Term -> VTy -> CheckM ()
 -- check s t ty | traceShow ("Check: " ++ show (s, t, ty)) False = undefined
 
-check s (Univ i) (VUniv j) | i < j = return ()
-check s (Univ i) t = throwError $ "Expecting universe over " ++ show i
+check (Univ i) (VUniv j) | i < j = return ()
+check (Univ i) t = throwError $ "Expecting universe over " ++ show i
 
-check s (Pi aty bty) (VUniv l) = do
-  check s aty (VUniv l)
+check (Pi aty bty) (VUniv l) = do
+  check aty (VUniv l)
   (atyval, var) <- evalAndVar aty
-  local (ctxExtVar var atyval s) $ check s bty (VUniv l)
-check s (Pi aty bclo) t = throwError "Expected universe"
+  local (ctxExtVar var atyval) $ check bty (VUniv l)
+check (Pi aty bclo) t = throwError "Expected universe"
 
-check s (Lam b) (VPi aty bclo) = do
+check (Lam b) (VPi aty bclo) = do
   lev <- asks ctxLen
   env <- asks ctxToEnv
   let var = makeVarVal aty lev
   let bty = N.doClosure (semEnvTopSlice env) bclo var
-  local (ctxExtVar var aty s) $ check s b bty
-check s (Lam b) ty = throwError "Unexpected lambda"
+  local (ctxExtVar var aty) $ check b bty
+check (Lam b) ty = throwError "Unexpected lambda"
 
-check s (Sg aty bty) (VUniv l) = do
-  check s aty (VUniv l)
+check (Sg aty bty) (VUniv l) = do
+  check aty (VUniv l)
   (atyval, var) <- evalAndVar aty
-  local (ctxExtVar var atyval s) $ check s bty (VUniv l)
-check s (Sg aty bclo) t = throwError "Expected universe"
+  local (ctxExtVar var atyval) $ check bty (VUniv l)
+check (Sg aty bclo) t = throwError "Expected universe"
 
-check s (Pair a b) (VSg aty bclo) = do
-  check s a aty
+check (Pair a b) (VSg aty bclo) = do
+  check a aty
   bty <- evalClosure bclo a
-  check s b bty
-check s (Pair a b) ty = throwError "Unexpected pair"
+  check b bty
+check (Pair a b) ty = throwError "Unexpected pair"
 
-check s (Id aty a b) (VUniv l) = do
-  check s aty (VUniv l)
+check (Id aty a b) (VUniv l) = do
+  check aty (VUniv l)
   aty' <- eval aty
-  check s a aty'
-  check s b aty'
-check s (Id aty a b) t = throwError "Expected universe"
+  check a aty'
+  check b aty'
+check (Id aty a b) t = throwError "Expected universe"
 
-check s (Refl t) (VId aty a b) = do
-  check s t aty
+check (Refl t) (VId aty a b) = do
+  check t aty
   tval <- eval t
-  assertEq s aty a tval
-  assertEq s aty b tval
-check s (Refl t) ty = throwError "Unexpected refl"
+  assertEq aty a tval
+  assertEq aty b tval
+check (Refl t) ty = throwError "Unexpected refl"
 
-check s (Und ty) (VUniv l) = check OneSl ty (VUniv l)
-check s (Und ty) t = throwError "Expected universe"
+check (Und ty) (VUniv l) = local (ctxSetSlice OneSl) $ check ty (VUniv l)
+check (Und ty) t = throwError "Expected universe"
 
-check s (UndIn a) (VUnd aty) = check OneSl a aty
-check s (UndIn a) aty = throwError "Unexpected natural intro"
+check (UndIn a) (VUnd aty) = local (ctxSetSlice OneSl) $ check a aty
+check (UndIn a) aty = throwError "Unexpected natural intro"
 
-check s (Tensor aty bty) (VUniv l) = do
-  check OneSl aty (VUniv l)
+check (Tensor aty bty) (VUniv l) = do
+  local (ctxSetSlice OneSl) $ check aty (VUniv l)
   (atyval, var) <- evalAndVar aty
-  local (ctxExtValZero var atyval) $ check OneSl bty (VUniv l)
-check s (Tensor aty bclo) t = throwError "Expected universe"
+  local (ctxExtValZero var atyval) $ local (ctxSetSlice OneSl) $ check bty (VUniv l)
+check (Tensor aty bclo) t = throwError "Expected universe"
 
-check s t@(TensorPair asl a bsl b) (VTensor aty bclo) = do
+check t@(TensorPair asl a bsl b) (VTensor aty bclo) = do
+  s <- asks ctxTopSlice
   when (not $ validSplitOf s (asl, bsl)) $ throwError $ "Invalid split of " ++ show s ++ " into " ++ show (asl, bsl)
 
-  check asl a aty
+  local (ctxSetSlice asl) $ check a aty
   bty <- evalClosure bclo a
-  check bsl b bty
-check s (TensorPair _ _ _ _) ty = throwError "Unexpected tensor intro"
+  local (ctxSetSlice bsl) $ check b bty
+check (TensorPair _ _ _ _) ty = throwError "Unexpected tensor intro"
 
-check s Unit (VUniv l) = return ()
+check Unit (VUniv l) = return ()
 
-check s (UnitIn u) VUnit = do
+check (UnitIn u) VUnit = do
+  s <- asks ctxTopSlice
   when (not $ validUnitOf s u) $ throwError $ "Invalid unit of " ++ show s ++ " into " ++ show u
 
-check s (Hom aty bty) (VUniv l) = do
-  check OneSl aty (VUniv l)
+check (Hom aty bty) (VUniv l) = do
+  local (ctxSetSlice OneSl) $ check aty (VUniv l)
   (atyval, var) <- evalAndVar aty
-  local (ctxExtHom var atyval) $ check (TensorSl (Sub s) (Sub IdSl)) bty (VUniv l)
-check s (Hom aty bclo) t = throwError "Expected universe"
+  local (ctxExtHom var atyval) $ check bty (VUniv l)
+check (Hom aty bclo) t = throwError "Expected universe"
 
-check s (HomLam b) (VHom aty bclo) = do
+check (HomLam b) (VHom aty bclo) = do
   lev <- asks ctxLen
   env <- asks ctxToEnv
   let var = makeVarVal aty lev
   let bty = N.doClosure (semEnvTopSlice env) bclo var
-  local (ctxExtHom var aty) $ check (TensorSl (Sub s) (Sub IdSl)) b bty
-check s (HomLam b) ty = throwError "Unexpected hom lambda"
+  local (ctxExtHom var aty) $ check b bty
+check (HomLam b) ty = throwError "Unexpected hom lambda"
 
-check s a ty = do
-  ty' <- synth s a
-  size <- asks (ctxSize s)
+check a ty = do
+  ty' <- synth a
+  size <- asks ctxSize
   when (not $ N.eqTy size ty ty') $ throwError $ "type mismatch, expected: " ++ show ty ++ " got " ++ show ty'
 
-synth :: SlI -> Term -> CheckM VTy
--- synth s t | traceShow ("Synth: " ++ show (s, t)) False = undefined
-synth s (Var i) = do
+synth :: Term -> CheckM VTy
+-- synth t | traceShow ("Synth: " ++ show (s, t)) False = undefined
+synth (Var i) = do
   (ty, ann) <- asks (ctxLookupVar i)
   case ann of
     Marked -> throwError $ "Cannot use variable " ++ show i ++ " because it is marked"
     Global -> return ty
     Col c -> do
-      when (not $ s `cellTo` c) $ throwError $ "Cannot use variable " ++ show i ++ " because the variable with annotation " ++ show c ++ " is not usable in slice " ++ show s
+      s <- asks ctxTopSlice
+      when (not $ s `cellTo` c) $ throwError $ "Cannot use variable " ++ show i ++
+                                               " because the variable with annotation " ++ show c ++
+                                               " is not usable in slice " ++ show s
       return ty
 
-synth s (ZeroVar i) = do
+synth (ZeroVar i) = do
   (ty, _) <- asks (ctxLookupVar i)
   lev <- asks ctxLen
   return (N.zero ty)
 
-synth s (Check a aty) = do
+synth (Check a aty) = do
   tyval <- eval aty
-  check s a tyval
+  check a tyval
   return tyval
 
-synth s (Fst p) = do
-  ty <- synth s p
+synth (Fst p) = do
+  ty <- synth p
   case ty of
     (VSg a b) -> return a
     _ -> throwError "expected Sg type"
 
-synth s (Snd p) = do
-  ty <- synth s p
+synth (Snd p) = do
+  ty <- synth p
   case ty of
     (VSg aty bclo) -> evalClosure bclo (Fst p)
     _ -> throwError "expected Sg type"
 
-synth s (App f a) = do
-  fty <- synth s f
+synth (App f a) = do
+  fty <- synth f
   case fty of
     (VPi aty bclo) -> do
-      check s a aty
+      check a aty
       evalClosure bclo a
     _ -> throwError "expected Pi type"
 
-synth s (HomApp fsl f asl a) = do
+synth (HomApp fsl f asl a) = do
+  s <- asks ctxTopSlice
   when (not $ validSplitOf s (fsl, asl)) $ throwError "Invalid split"
 
-  fty <- synth fsl f
+  fty <- local (ctxSetSlice fsl) $ synth f
   case fty of
     (VHom aty bclo) -> do
-      check asl a aty
+      local (ctxSetSlice asl) $ check a aty
       evalClosure bclo a
     _ -> throwError "expected Hom type"
 
-synth s (UndOut n) = do
-  nty <- synth s n
+synth (UndOut n) = do
+  nty <- synth n
   case nty of
     (VUnd aty) -> return aty
     _ -> throwError "expected Und type"
 
-synth s (Match tar mot pat branch) = do
-  size <- asks (ctxSize s)
+synth (Match tar mot pat branch) = do
+  size <- asks ctxSize
 
   let pal = N.makePatPal size [RightCommaPath] (patToShape pat)
 
+  s <- asks ctxTopSlice
   (pattele, patterm) <- local (flip ctxExtComma (SemCtxTele pal [])) $ checkAndEvalPat s [] pat
 
   semEnv <- asks ctxToEnv
 
   let vpat   = N.evalPat semEnv pat
       tarty  = N.recoverPatType vpat
-      motvar = N.makeVarValS tarty size
+      tarvar = N.makeVarValS tarty size
 
-  local (flip ctxExtComma (SemCtxTele OneSemPal [CtxEntry motvar tarty (Col (CommaSl (Sub s) (Sub IdSl)))])) $ checkTy s mot
+  local (flip ctxExtComma (SemCtxTele OneSemPal [CtxEntry tarvar tarty (Col (CommaSl (Sub s) (Sub IdSl)))])) $ checkTy mot
 
-  check s tar tarty
+  check tar tarty
 
   let (_, patterm) = N.makeVPatCartTele (N.extSizeComma size (SemTele pal [])) vpat
 
-  local (flip ctxExtComma (SemCtxTele pal pattele)) $ check (CommaSl (Sub s) (Sub IdSl)) branch (N.eval (semEnvCommaSingle semEnv patterm) mot)
+  local (flip ctxExtComma (SemCtxTele pal pattele)) $ check branch (N.eval (semEnvCommaSingle semEnv patterm) mot)
 
   return $ N.eval (semEnvExtSilentSingle semEnv (N.eval semEnv tar)) mot
 
-synth s a = throwError $ "cannot synth the type of " ++ show a
+synth a = throwError $ "cannot synth the type of " ++ show a
 
 -- This duplicates some logic in `Normalise` but I think this avoids
 -- being accidentally quadratic by repeatedly evalling the types
 
 -- At this point the palette has already been added to the context.
 
--- `s` represents the slice that the match is being checked at, not the
+-- `s` represents the slice that the entire pattern is being checked
+-- at, not the slice at the current location in the palette.
 checkAndEvalPat :: SlI -> PatPath -> Pat -> CheckM ([CtxEntry], Value)
 checkAndEvalPat s path (VarPat ty) = do
   let c = sliceAtType s path
-  checkTy c ty
-  size <- asks (ctxSize s)
-  env <- asks ctxToEnv
-
-  let vty = N.eval env ty
-      v = N.makeVarValS vty size
-
+  local (ctxSetSlice c) $ checkTy ty
+  (vty, v) <- evalAndVar ty
   return $ ([CtxEntry v vty (Col c)], v)
 
 checkAndEvalPat s path (ZeroVarPat ty) = do
-  checkTy OneSl ty
-  size <- asks (ctxSize s)
+  local (ctxSetSlice OneSl) $ checkTy ty
+  size <- asks ctxSize
   env <- asks ctxToEnv
 
   let vty = N.eval env ty
@@ -321,7 +328,7 @@ checkAndEvalPat s path (UndInPat p) = do
   (ptele, pterm) <- checkAndEvalPat s undefined p -- FIXME: this is stupid
   return $ (ptele, VUndIn pterm)
 checkAndEvalPat s path UnitPat = do
-  size <- asks (ctxSize s)
+  size <- asks ctxSize
   let u = N.makeUnitVal size path
   return ([], VUnitIn u)
 checkAndEvalPat s path (PairPat p q) = do
@@ -332,7 +339,7 @@ checkAndEvalPat s path (ReflPat p) = do
   (ptele, pterm) <- checkAndEvalPat s path p
   return (ptele, VPair pterm (VPair pterm (VRefl pterm)))
 checkAndEvalPat s path (TensorPat p q) = do
-  size <- asks (ctxSize s)
+  size <- asks ctxSize
   let psl = N.makeSliceVal size (LeftTensorPath : path)
       qsl = N.makeSliceVal size (RightTensorPath : path)
   (ptele, pterm) <- checkAndEvalPat s (LeftTensorPath : path) p
@@ -369,35 +376,35 @@ sliceAtType' (RightCommaPath : p) = case sliceAtType' p of
 sliceAtType' (LeftUnitorPath : p) = (fst $ sliceAtType' p, True)
 sliceAtType' (RightUnitorPath : p) = (fst $ sliceAtType' p, True)
 
-checkTy :: SlI -> Ty -> CheckM ()
+checkTy :: Ty -> CheckM ()
 -- checkTy t | traceShow ("Check ty: " ++ show t) False = undefined
-checkTy s (Univ i) = return ()
-checkTy s (Pi aty bty) = do
-  checkTy s aty
+checkTy (Univ i) = return ()
+checkTy (Pi aty bty) = do
+  checkTy aty
   (atyval, var) <- evalAndVar aty
-  local (ctxExtVar var atyval s) $ checkTy s bty
-checkTy s (Sg aty bty) = do
-  checkTy s aty
+  local (ctxExtVar var atyval) $ checkTy bty
+checkTy (Sg aty bty) = do
+  checkTy aty
   (atyval, var) <- evalAndVar aty
-  local (ctxExtVar var atyval s) $ checkTy s bty
-checkTy s (Id aty a b) = do
-  checkTy s aty
+  local (ctxExtVar var atyval) $ checkTy bty
+checkTy (Id aty a b) = do
+  checkTy aty
   aty' <- eval aty
-  check s a aty'
-  check s b aty'
-checkTy s (Und ty) = do
-  checkTy OneSl ty
-checkTy s (Tensor aty bty) = do
-  checkTy OneSl aty
+  check a aty'
+  check b aty'
+checkTy (Und ty) = do
+  local (ctxSetSlice OneSl) $ checkTy ty
+checkTy (Tensor aty bty) = do
+  local (ctxSetSlice OneSl) $ checkTy aty
   (atyval, var) <- evalAndVar aty
-  local (ctxExtValZero var atyval) $ checkTy OneSl bty
-checkTy s Unit = return ()
-checkTy s (Hom aty bty) = do
-  checkTy OneSl aty
+  local (ctxExtValZero var atyval) $ local (ctxSetSlice OneSl) $ checkTy bty
+checkTy Unit = return ()
+checkTy (Hom aty bty) = do
+  local (ctxSetSlice OneSl) $ checkTy aty
   (atyval, var) <- evalAndVar aty
-  local (ctxExtHom var atyval) $ checkTy (TensorSl (Sub s) (Sub IdSl)) bty
-checkTy s a = do
-  ty <- synth s a
+  local (ctxExtHom var atyval) $ checkTy bty
+checkTy a = do
+  ty <- synth a
   case ty of
     VUniv l -> return ()
     t -> throwError $ "Expected " ++ show a ++ " to synth universe, instead got " ++ show t

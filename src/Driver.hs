@@ -372,14 +372,14 @@ processDecl env@(Env bindings checkCtx) (C.Def name cbody cty) = do
   let ty   = evalState (runReaderT (bind cty) (BindState OriginPal bindings Nothing)) 0
   let body = evalState (runReaderT (bind cbody) (BindState OriginPal bindings Nothing)) 0
 
-  case S.runCheckM checkCtx $ S.checkTy S.IdSl ty of
+  case S.runCheckM checkCtx $ S.checkTy ty of
     Left err -> putStrLn $ "Error in type of " ++ name ++ ": " ++ err
     Right () -> return ()
 
   let semEnv = S.ctxToEnv checkCtx
   let semTy = N.eval semEnv ty
 
-  case S.runCheckM checkCtx $ S.check S.IdSl body semTy of
+  case S.runCheckM checkCtx $ S.check body semTy of
     Left err -> putStrLn $ "Error in: " ++ name ++ ": " ++ err
     Right () -> putStrLn $ "Checked: " ++ name
 
@@ -394,7 +394,7 @@ processDecl env@(Env bindings checkCtx) (C.Dont name cbody cty) = do
   let semEnv = S.ctxToEnv checkCtx
   let semTy = N.eval semEnv ty
 
-  case S.runCheckM checkCtx $ S.check S.IdSl body semTy of
+  case S.runCheckM checkCtx $ S.check body semTy of
     Left err -> putStrLn $ "Correctly failed: " ++ name ++ " because " ++ err
     Right () -> putStrLn $ "Error: " ++ name ++ " should not have typechecked!"
 
