@@ -63,8 +63,8 @@ data SemCtxTele = SemCtxTele { telePal :: SemPal, teleVars :: [CtxEntry] }
 data SemHomTele = SemHomTele { homTelePal :: SemPal, homTeleVars :: [CtxEntry] }
   deriving (Show)
 
-ctxExtComma :: SemCtx -> SemCtxTele -> SemCtx
-ctxExtComma (SemCtx s pal env) (SemCtxTele pal' env') = SemCtx (CommaSl (Sub s) (Sub IdSl)) (CommaSemPal pal pal') (env' ++ fmap entryLiftComma env)
+ctxExtComma :: SemCtxTele -> SemCtx -> SemCtx
+ctxExtComma (SemCtxTele pal' env') (SemCtx s pal env)  = SemCtx (CommaSl (Sub s) (Sub IdSl)) (CommaSemPal pal pal') (env' ++ fmap entryLiftComma env)
 
 ctxExtCommaSilent :: [CtxEntry] -> SemCtx -> SemCtx
 ctxExtCommaSilent es (SemCtx s pal vars) = SemCtx s pal (es ++ vars)
@@ -276,10 +276,10 @@ synth (UndOut n) = do
 synth (Match tar mot pat branch) = do
   size <- asks ctxSize
 
-  let pal = N.makePatPal size [RightCommaPath] (patToShape pat)
+  let palext = N.makePatPal size [RightCommaPath] (patToShape pat)
 
   s <- asks ctxTopSlice
-  (pattele, patterm) <- local (flip ctxExtComma (SemCtxTele pal [])) $ checkAndEvalPat s [] pat
+  (pattele, patterm) <- local (ctxExtComma (SemCtxTele palext [])) $ checkAndEvalPat s [] pat
 
   semEnv <- asks ctxToEnv
 
@@ -287,13 +287,9 @@ synth (Match tar mot pat branch) = do
       tarty  = N.recoverPatType vpat
       tarvar = N.makeVarValS tarty size
 
-  local (flip ctxExtComma (SemCtxTele OneSemPal [CtxEntry tarvar tarty (Col (CommaSl (Sub s) (Sub IdSl)))])) $ checkTy mot
-
+  local (ctxExtVar tarvar tarty) $ checkTy mot
   check tar tarty
-
-  let (_, patterm) = N.makeVPatCartTele (N.extSizeComma size (SemTele pal [])) vpat
-
-  local (flip ctxExtComma (SemCtxTele pal pattele)) $ check branch (N.eval (semEnvCommaSingle semEnv patterm) mot)
+  local (ctxExtComma (SemCtxTele palext pattele)) $ check branch (N.eval (semEnvCommaSingle semEnv patterm) mot)
 
   return $ N.eval (semEnvExtSilentSingle semEnv (N.eval semEnv tar)) mot
 

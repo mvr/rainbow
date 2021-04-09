@@ -356,7 +356,7 @@ bind (C.Match t z mot patterm br) = do
   let pat = fromJust $ C.comprehendPat patterm
   pat' <- fillPatCols pat
 
-  boundmot <- local (bindsExtCommaPal OnePal . bindsExtLam z) $ bind mot
+  boundmot <- local (bindsExtLam z) $ bind mot
 
   let patpal = patPalette pat'
   boundpat <- local (bindsExtCommaPal patpal) $ bindPat pat'
